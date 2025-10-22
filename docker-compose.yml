@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: godzilla-dev
+    volumes:
+      # 挂载项目目录以支持热重载
+      - .:/app
+      # 挂载构建缓存
+      - build-cache:/app/core/build
+      # 挂载 pip 缓存
+      - pip-cache:/root/.cache/pip
+    working_dir: /app
+    # 保持容器运行
+    stdin_open: true
+    tty: true
+    # DNS 配置 - 使用公共 DNS 服务器解决 WSL2 DNS 问题
+    dns:
+      - 8.8.8.8
+      - 114.114.114.114
+      - 1.1.1.1
+    # 网络模式
+    network_mode: bridge
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+    # 环境变量
+    environment:
+      - PYTHONUNBUFFERED=1
+      - KF_HOME=/app/runtime
+    # 端口映射
+    ports:
+      - "8080:8080"
+      - "9001:9001"
+    # 启动命令 - 保持容器运行
+    command: tail -f /dev/null
+
+volumes:
+  build-cache:
+  pip-cache:
+

@@ -1,17 +1,85 @@
+# Godzilla-Evan
 
-----
-[![License](https://img.shields.io/badge/License-Apache%202.0-informational.svg)](https://github.com/godzilla-foundation/godzilla-community/blob/master/LICENSE)
-[![Youtube](https://img.shields.io/youtube/channel/subscribers/UCxzzdEnDRbylLMWmaMjywOA)](https://www.youtube.com/@godzilla-dev)
+A low-latency automated crypto trading framework based on kungfu.
 
-godzilla.dev is an open-source c++/python framework that helps you design and deploy low-latency automated crypto trading strategies
+## What is This?
 
-The godzilla.dev codebase is free and publicly available under the Apache 2.0 open-source license. Our mission is to **provide the best open high-frequency trading infrastructure** by creating a global community of algorithmic traders and developers that share knowledge and contribute to the codebase.
+This project is a modified fork of the kungfu trading framework, customized for godzilla.dev's use case.
 
-[Read More Documents](https://godzilla.dev)
-----
+**Core Components**:
+- **yijinjing** (易筋經): Journal-based event system for high-frequency trading
+- **wingchun** (詠春): Trading gateway abstraction with order management
+- **C++/Python**: Low-latency C++ core with Python bindings
 
-godzilla.dev 是一个开源的 C++/Python 框架，旨在帮助你设计和部署低延迟的自动化加密货币交易策略。
+**License**: Apache 2.0 (maintained from upstream)
 
-godzilla.dev 的代码库是免费的，并且在 Apache 2.0 开源许可证下公开提供。我们的使命是通过创建一个全球算法交易员和开发者的社区，分享知识并贡献代码，提供最佳的高频交易基础设施。
+For project origin and fork details, see [.doc/ORIGIN.md](.doc/ORIGIN.md)
 
-[Read More Documents](https://godzilla.dev)
+## Quick Start
+
+Three steps to start development:
+
+```bash
+# 1. Navigate to project
+cd /home/huyifan/projects/godzilla-evan
+
+# 2. Start container
+docker-compose up -d
+
+# 3. Enter dev environment
+docker-compose exec app /bin/bash
+```
+
+For detailed setup instructions, see [.doc/INSTALL.md](.doc/INSTALL.md)
+
+## Documentation
+
+Complete documentation is in the `.doc/` directory:
+
+- **[.doc/INDEX.md](.doc/INDEX.md)** - Documentation index
+- **[.doc/INSTALL.md](.doc/INSTALL.md)** - Environment setup guide
+- **[.doc/HACKING.md](.doc/HACKING.md)** - Development workflow
+- **[.doc/ARCHITECTURE.md](.doc/ARCHITECTURE.md)** - System architecture
+
+## Project Structure
+
+```
+godzilla-evan/
+├── core/                # Core code (C++/Python)
+│   ├── cpp/
+│   │   ├── yijinjing/  # Event system
+│   │   └── wingchun/   # Trading gateway
+│   └── python/
+├── strategies/          # Trading strategies
+├── .doc/               # Documentation
+└── docker-compose.yml  # Dev environment
+```
+
+## Development
+
+Edit code on host (Windows/Mac), build in container:
+
+```bash
+# In container
+cd /app/core/build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+make -j$(nproc)
+```
+
+See [.doc/HACKING.md](.doc/HACKING.md) for development workflow.
+
+## Deployment
+
+Same Docker configuration works on any Linux server:
+
+```bash
+git clone <your-repo>
+cd godzilla-evan
+docker-compose up -d
+```
+
+Zero modifications needed.
+
+## License
+
+Apache 2.0 - See [LICENSE](LICENSE) for details

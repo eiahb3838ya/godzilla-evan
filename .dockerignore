@@ -1,0 +1,44 @@
+# Git 文件
+.git
+.gitignore
+.gitattributes
+
+# Docker 文件
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# 构建产物
+core/build/
+*.o
+*.so
+*.pyc
+__pycache__/
+*.egg-info/
+dist/
+build/
+
+# IDE 文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 日志和临时文件
+*.log
+tmp/
+temp/
+runtime/
+
+# Python 缓存
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# 文档
+*.md
+docs/
+LICENSE
+
