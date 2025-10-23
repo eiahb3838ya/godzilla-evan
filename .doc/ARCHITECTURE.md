@@ -54,55 +54,173 @@ Both subsystems are implemented in C++17 for low latency, with Python bindings f
 
 ### yijinjing (易筋經)
 
-Journal-based event sourcing system for financial data.
+Event sourcing infrastructure based on memory-mapped journal files.
 
-#### Purpose
+**Code Location**: `core/cpp/yijinjing/`
 
-- Persistent storage of all events (quotes, trades, orders)
-- Event replay for backtesting and debugging
-- Time-series data management
-- High-performance append-only storage
+#### Core Architecture: Three-Layer Design
 
-#### Key Concepts
+```
+Journal (continuous memory abstraction)
+   ↓ manages
+Page (memory-mapped file, 1-128 MB)
+   ↓ contains
+Frame (48-byte header + variable data)
+```
 
-**Journal**:
-- Append-only memory-mapped file
-- Stores events chronologically
-- Supports multiple readers, single writer
-- Lock-free reading
+#### Layer 1: Frame (Minimal Unit)
 
-**Frame**:
-- Time-indexed container for events
-- Nanosecond precision timestamp
-- Source identification
-- Event type and data
+**Structure** (`journal/frame.h`):
+```cpp
+struct frame_header {  // 48 bytes, packed
+    uint32_t length;           // Total frame length
+    uint32_t header_length;    // Header length (48)
+    int64_t gen_time;          // Generate time (nanoseconds)
+    int64_t trigger_time;      // Trigger time (latency tracking)
+    int32_t msg_type;          // Message type ID
+    uint32_t source;           // Source location UID
+    uint32_t dest;             // Destination location UID
+} __attribute__((packed));
+```
 
-**Reader/Writer**:
-- Reader: Zero-copy read from journal
-- Writer: Append events to journal
-- Multiple concurrent readers
-- Single writer per journal
+**Zero-Copy Design**:
+- Frame object holds only a pointer to mmap region
+- `data<T>()` template: type-safe data access without copy
+- Memory layout: `[frame_header][user_data]`
+
+**Implementation**:
+- `frame` class implements `event` interface
+- Direct pointer arithmetic to access data
+- `move_to_next()`: advance to next frame in page
+
+#### Layer 2: Page (Memory Page)
+
+**Intelligent Sizing** (`journal/page.h`):
+- **MD** (Market Data): 128 MB - high throughput
+- **TD/STRATEGY**: 4 MB - moderate frequency  
+- **Default**: 1 MB
+
+**Memory-Mapped File**:
+- One page = one mmap file on disk
+- Structure: `[page_header][frame1][frame2]...[frameN]`
+- Tracks `last_frame_position` for append
+- `is_full()`: checks if space available
+
+**Page Management**:
+- Lazy loading: load on first access
+- Auto-rotation: create new page when full
+- Time-indexed: can seek to specific time
+
+#### Layer 3: Journal (Log Abstraction)
+
+**Purpose** (`journal/journal.h`):
+- Manage page loading and switching
+- Provide continuous memory view
+- Support time-based navigation
+
+**Key Operations**:
+- `next()`: move to next frame (O(1))
+- `seek_to_time(nanotime)`: jump to specific time (O(log n))
+- Automatic page loading on boundary crossing
+
+**Reader/Writer Pattern**:
+
+**Reader**:
+- Subscribe to multiple journals
+- Time-based merge sort across journals
+- Lock-free reading (multiple concurrent readers)
+- `join()`: subscribe to a journal from time T
+- `disjoin()`: unsubscribe
+
+**Writer**:
+- Single writer per journal (no locking needed)
+- `open_frame()`: allocate space in current page
+- `close_frame()`: finalize and publish notification
+- Template `write<T>()`: type-safe write
+
+#### Event System
+
+**Base Abstraction** (`common.h`):
+```cpp
+class event {  // Abstract interface
+    virtual int64_t gen_time() const = 0;
+    virtual int64_t trigger_time() const = 0;
+    virtual int32_t msg_type() const = 0;
+    virtual uint32_t source() const = 0;
+    virtual uint32_t dest() const = 0;
+    
+    template<typename T>
+    const T& data() const;  // Zero-copy data access
+};
+```
+
+All events (market data, orders, fills) implement this interface.
+
+#### Location System
+
+**Data Classification**:
+```cpp
+mode: LIVE | DATA | REPLAY | BACKTEST
+category: MD | TD | STRATEGY | SYSTEM  
+layout: JOURNAL | SQLITE | NANOMSG | LOG
+```
+
+**Location Identity**:
+- Unique ID: `hash32(category/group/name/mode)`
+- Example: `md/binance/BTC-USDT/live` → UID
+- Determines storage path and page size
+
+#### Time System
+
+**Nanosecond Precision** (`time.h`):
+```cpp
+time_unit::NANOSECONDS_PER_SECOND = 1,000,000,000
+time::now_in_nano() → int64_t  // Unix timestamp * 1e9
+```
+
+**Features**:
+- `strptime()`: parse string to nano time
+- `strftime()`: format nano time to string
+- `next_minute_nano()`, `next_day_nano()`: time alignment
+
+#### Publisher/Observer Pattern
+
+**Publisher** (`common.h`):
+- `notify()`: send notification
+- `publish(json_message)`: publish update
+
+**Observer**:
+- `wait()`: block until notification
+- `get_notice()`: retrieve message
+
+Used for cross-process communication via nanomsg.
 
 #### File Structure
 
 ```
 runtime/journal/
-├── strategy_1/
-│   ├── STRATEGY.journal     # Strategy events
-│   └── STRATEGY.index       # Time index
-├── gateway_binance/
-│   ├── MD.journal          # Market data
-│   ├── MD.index
-│   ├── TD.journal          # Trade data
-│   └── TD.index
+└── [date]/
+    └── [source_uid]/
+        ├── [dest_uid]_0.journal    # Page 0
+        ├── [dest_uid]_1.journal    # Page 1
+        └── ...
+```
+
+Example:
+```
+runtime/journal/20251023/12345678/
+├── 0_0.journal        # 128 MB (MD to all)
+├── 87654321_0.journal # 4 MB (TD to specific strategy)
+└── 87654321_1.journal # Next page when full
 ```
 
 #### Performance Characteristics
 
-- **Latency**: <1μs for event write
+- **Write latency**: <1μs (mmap + pointer move)
+- **Read latency**: <100ns (pointer dereference)
 - **Throughput**: 1M+ events/second
-- **Storage**: Compressed, minimal overhead
-- **Scalability**: Linear with event count
+- **Storage**: Append-only, no compression (speed priority)
+- **Concurrency**: Lock-free reading, single writer
 
 ### wingchun (詠春)
 
@@ -344,6 +462,96 @@ Potential improvements:
 - Machine learning integration
 - Real-time risk analytics dashboard
 
+## Code Structure Mapping
+
+Documentation to actual code correspondence:
+
+### yijinjing Core
+
+```
+core/cpp/yijinjing/
+├── include/kungfu/yijinjing/
+│   ├── common.h              # Event, location, data classification
+│   ├── time.h                # Nanosecond time system
+│   ├── io.h                  # I/O abstractions
+│   ├── msg.h                 # Message type definitions
+│   └── journal/
+│       ├── common.h          # Journal forward declarations
+│       ├── frame.h           # Frame structure (48-byte header)
+│       ├── page.h            # Page management (1-128 MB)
+│       └── journal.h         # Journal, reader, writer
+├── src/
+│   ├── time/                 # Time implementation
+│   ├── journal/              # Journal implementation
+│   └── io/                   # I/O implementation
+└── pybind/                   # Python bindings (pybind11)
+```
+
+### wingchun Core
+
+```
+core/cpp/wingchun/
+├── include/kungfu/wingchun/
+│   ├── common.h              # Trading data types
+│   ├── msg.h                 # Trading messages (51KB!)
+│   ├── broker/
+│   │   ├── marketdata.h      # Market data broker
+│   │   └── trader.h          # Trading broker
+│   ├── strategy/
+│   │   ├── context.h         # Strategy context
+│   │   ├── strategy.h        # Strategy base class
+│   │   └── runner.h          # Strategy runner
+│   ├── service/
+│   │   ├── ledger.h          # Position/PnL tracking
+│   │   ├── bar.h             # K-line aggregation
+│   │   └── algo.h            # Algo orders
+│   └── book/
+│       └── book.h            # Order book
+├── src/                      # Implementations
+└── pybind/                   # Python bindings
+```
+
+### Python Layer
+
+```
+core/python/kungfu/
+├── __main__.py               # kfc CLI entry point
+├── yijinjing/                # Python wrapper for yijinjing
+├── wingchun/                 # Python wrapper for wingchun
+├── command/                  # CLI commands
+│   ├── journal/              # Journal inspection
+│   ├── account/              # Account management
+│   └── algo/                 # Algo order management
+└── data/
+    └── sqlite/               # SQLite data storage
+```
+
+### Extensions
+
+```
+core/extensions/
+└── binance/                  # Binance exchange gateway
+    ├── CMakeLists.txt
+    └── src/
+```
+
+## Statistics
+
+Code size (as of 2025-10-23):
+- yijinjing C++: ~7,357 lines
+- wingchun C++: ~5,799 lines
+- Python bindings: ~2,000 lines (estimated)
+- Total core: ~15,000 lines
+
+Key dependencies:
+- C++17 standard
+- spdlog 1.3.1 (logging)
+- fmt 5.3.0 (formatting)
+- rxcpp 4.1.0 (reactive extensions)
+- nanomsg 1.1.5 (messaging)
+- SQLiteCpp 2.3.0 (database)
+- pybind11 (Python bindings)
+
 ## Related Documentation
 
 - [INSTALL.md](INSTALL.md) - Setup and deployment
@@ -359,5 +567,5 @@ Potential improvements:
 
 ---
 
-Last Updated: 2025-10-22
+Last Updated: 2025-10-23
 

@@ -6,6 +6,34 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Architecture Documentation Update - 2025-10-23
+
+#### Added
+- **Detailed yijinjing architecture** in ARCHITECTURE.md:
+  - Three-layer design: Frame (48-byte header) / Page (1-128MB) / Journal
+  - Zero-copy design explanation with code examples
+  - Intelligent page sizing strategy (MD=128MB, TD/STRATEGY=4MB)
+  - Event system abstraction and implementation
+  - Location system: mode/category/layout classification
+  - Time system: nanosecond precision details
+  - Publisher/Observer pattern for IPC
+- **Code structure mapping**: Documentation to actual file paths
+  - yijinjing: `core/cpp/yijinjing/` with detailed file tree
+  - wingchun: `core/cpp/wingchun/` with module breakdown
+  - Python layer: `core/python/kungfu/` structure
+  - Extensions: `core/extensions/` organization
+- **Statistics**: Code size (~15K lines total)
+
+#### Changed
+- Updated ARCHITECTURE.md token estimate: 2500 → 4200 tokens
+- Rewrote yijinjing section with concrete technical details from code
+- Changed from abstract descriptions to struct definitions and measurements
+
+#### Rationale
+- **Code is Truth**: All information extracted from actual source code
+- **High information density**: Replaced vague descriptions with specifics
+- **Verifiable**: All technical details cross-referenced with code
+
 ### Documentation Restructure - 2025-10-22
 
 #### Added
