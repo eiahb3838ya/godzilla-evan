@@ -6,33 +6,51 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-### Architecture Documentation Update - 2025-10-23
+### Binance Testnet Integration & Documentation - 2025-10-28
 
 #### Added
-- **Detailed yijinjing architecture** in ARCHITECTURE.md:
-  - Three-layer design: Frame (48-byte header) / Page (1-128MB) / Journal
-  - Zero-copy design explanation with code examples
-  - Intelligent page sizing strategy (MD=128MB, TD/STRATEGY=4MB)
-  - Event system abstraction and implementation
-  - Location system: mode/category/layout classification
-  - Time system: nanosecond precision details
-  - Publisher/Observer pattern for IPC
-- **Code structure mapping**: Documentation to actual file paths
-  - yijinjing: `core/cpp/yijinjing/` with detailed file tree
-  - wingchun: `core/cpp/wingchun/` with module breakdown
-  - Python layer: `core/python/kungfu/` structure
-  - Extensions: `core/extensions/` organization
-- **Statistics**: Code size (~15K lines total)
+- **TESTNET.md** complete rewrite with step-by-step troubleshooting
+  - PM2 installation guide (now required for official scripts)
+  - Manual database creation method for Docker environments
+  - Complete restart procedure with graceful shutdown
+  - Comprehensive troubleshooting section for 6+ common errors
+- **scripts/binance_test/graceful_shutdown.sh** - Automated cleanup script
+  - Stops all PM2 processes gracefully
+  - Cleans journal files (prevents crashes on restart)
+  - Cleans socket files (`*.nn`, `*.sock`)
+  - Removes old logs (7+ days)
+- **DEBUGGING.md Case 2** - PM2 + Database Configuration deep dive
+  - Documents 5 chained errors during system startup
+  - Root cause analysis for each error
+  - Step-by-step diagnostic process
+  - Complete resolution with working configuration
 
 #### Changed
-- Updated ARCHITECTURE.md token estimate: 2500 → 4200 tokens
-- Rewrote yijinjing section with concrete technical details from code
-- Changed from abstract descriptions to struct definitions and measurements
+- **INSTALL.md** updated to mention PM2 requirement for test scripts
+- **INDEX.md** restructured with critical warnings at top
+  - Emphasizes TESTNET.md for Binance users
+  - Simplified navigation
+- **Learning Plan** (.cursor/plans/) completely redesigned
+  - Removed "Phase 0", merged into Phase 2.1
+  - Condensed from 1304 lines → 252 lines
+  - Incorporated all debugging lessons learned
+  - Added detailed troubleshooting table
 
-#### Rationale
-- **Code is Truth**: All information extracted from actual source code
-- **High information density**: Replaced vague descriptions with specifics
-- **Verifiable**: All technical details cross-referenced with code
+#### Fixed
+- **Critical**: Documented `gz_user1` account name requirement (hardcoded in PM2 configs)
+- **Critical**: Documented PM2 installation (not pre-installed in container)
+- **Critical**: Documented journal file cleanup requirement
+- Python symlink issue (`python` vs `python3`)
+- InstrumentType mismatch (Spot vs FFuture)
+
+#### Lessons Learned
+1. PM2 is essential for official scripts but not pre-installed
+2. Account name MUST be `gz_user1` (not email or custom names)
+3. Journal files cause registration conflicts if not cleaned
+4. Database creation may fail in non-TTY Docker environments
+5. Strategy must match API type (Futures Testnet requires FFuture)
+
+---
 
 ### Documentation Restructure - 2025-10-22
 

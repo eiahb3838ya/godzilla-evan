@@ -1,8 +1,8 @@
 # Documentation Metadata Index
 # Machine-readable documentation catalog for AI context management
 
-version: "1.1"
-last_updated: "2025-10-23"
+version: "1.0"
+last_updated: "2025-10-22"
 
 # Project Identity
 project:
@@ -58,14 +58,10 @@ documents:
     path: ".doc/ARCHITECTURE.md"
     type: "core"
     purpose: "System architecture and design"
-    estimated_tokens: 4200
+    estimated_tokens: 2500
     dependencies: ["INDEX"]
     audience: ["developer", "architect"]
-    verified_date: "2025-10-23"
-    updates:
-      - "2025-10-23: Added detailed yijinjing architecture (Frame/Page/Journal)"
-      - "2025-10-23: Added location system, event abstraction, time system"
-      - "2025-10-23: Added code structure mapping"
+    verified_date: null
     
   CHANGELOG:
     path: ".doc/CHANGELOG.md"

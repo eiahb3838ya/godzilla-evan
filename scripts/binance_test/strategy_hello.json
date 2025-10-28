@@ -1,0 +1,13 @@
+{
+  "apps": [
+    {
+      "name": "strategy:hello",
+      "cwd": "../../",
+      "script": "core/python/dev_run.py",
+      "exec_interpreter": "python3",
+      "args": "-l info strategy -n hello -p strategies/helloworld/helloworld.py -c strategies/conf.json",
+      "watch": "false"
+    }
+  ]
+}
+

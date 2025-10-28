@@ -2,115 +2,56 @@
 
 Complete documentation for godzilla-evan project.
 
-## Essential Reading
+## 🚨 Critical Reading (Start Here)
 
-**New to this project?** Start here:
+**Running Binance Testnet?** Read this FIRST to avoid common pitfalls:
+1. **[TESTNET.md](TESTNET.md)** - Complete Binance setup guide with troubleshooting
+   - PM2 installation (REQUIRED)
+   - Account configuration (`gz_user1` naming)
+   - Graceful shutdown to avoid crashes
 
-1. [ORIGIN.md](ORIGIN.md) - Understand the project's history (kungfu fork)
-2. [INSTALL.md](INSTALL.md) - Set up your development environment
-3. [HACKING.md](HACKING.md) - Learn the development workflow
+**New to this project?** Read in order:
+2. [INSTALL.md](INSTALL.md) - Docker environment setup
+3. [ARCHITECTURE.md](ARCHITECTURE.md) - System design (yijinjing + wingchun)
 
-## Core Documentation
+**Hit a bug?** Check these:
+4. [DEBUGGING.md](DEBUGGING.md) - Real debugging case studies with solutions
+5. [LOG_LOCATIONS.md](LOG_LOCATIONS.md) - Where to find system logs
 
-### ORIGIN.md
-Explains that this is a fork of the kungfu trading framework.
-- Project identity and history
-- Fork relationship
-- License information
-- Code attribution
+## Reference Documentation
 
-### INSTALL.md
-Complete environment setup guide.
-- System requirements (Docker, WSL2)
-- Quick start (3 steps)
-- DNS troubleshooting
-- Common issues and solutions
+| Document | Purpose |
+|----------|---------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System design (yijinjing + wingchun) |
+| [HACKING.md](HACKING.md) | Development workflow and build process |
+| [ORIGIN.md](ORIGIN.md) | Fork history and license info |
+| [CHANGELOG.md](CHANGELOG.md) | Change history |
 
-### HACKING.md
-Development workflow and code structure.
-- Code organization (yijinjing, wingchun)
-- Build process
-- Testing
-- Contribution guidelines
+## Architecture Decisions (ADRs)
 
-### ARCHITECTURE.md
-System architecture and design.
-- Overall architecture
-- yijinjing event system
-- wingchun trading gateway
-- Data flow and performance
+- [adr/001-docker.md](adr/001-docker.md) - Why Docker
+- [adr/002-wsl2.md](adr/002-wsl2.md) - Why WSL2
+- [adr/003-dns.md](adr/003-dns.md) - DNS strategy
 
-### CHANGELOG.md
-Structured change history.
-- Version history
-- Major changes
-- Migration notes
+## Quick Start
 
-## Architecture Decision Records
-
-Important decisions and their rationale:
-
-- **[adr/001-docker.md](adr/001-docker.md)** - Why Docker for development
-- **[adr/002-wsl2.md](adr/002-wsl2.md)** - Why WSL2 as Docker backend
-- **[adr/003-dns.md](adr/003-dns.md)** - DNS resolution strategy
-
-## Module Documentation
-
-Detailed documentation for core modules (when available):
-
-- `modules/yijinjing.md` - Event system internals
-- `modules/wingchun.md` - Trading gateway architecture
-
-## Scripts
-
-Useful scripts in `.doc/scripts/`:
-
-- `verify-commands.sh` - Verify all documentation commands work
-
-## Quick Reference
-
-### Quick Start
 ```bash
-cd /home/huyifan/projects/godzilla-evan
+# Start environment
 docker-compose up -d
-docker-compose exec app /bin/bash
-```
+docker-compose exec app bash
 
-### Build
-```bash
-# In container
+# Build C++ core
 cd /app/core/build
 cmake -DCMAKE_BUILD_TYPE=Release ..
 make -j$(nproc)
+
+# Install Python package
+cd /app/core/python && pip3 install -e .
 ```
 
-### Container Management
-```bash
-docker-compose ps                 # Status
-docker-compose logs -f app        # Logs
-docker-compose restart            # Restart
-docker-compose down               # Stop
-```
-
-## Context Engineering
-
-For AI/LLM context management:
-
-- **.context/DESIGN.md** - Context management design principles
-- **.context/index.yaml** - Document metadata and dependencies
-- **.context/modules.yaml** - Context loading strategies
-
-## Getting Help
-
-1. Check [INSTALL.md](INSTALL.md) troubleshooting section
-2. Review relevant ADR for design rationale
-3. Run diagnostic script: `.doc/scripts/diagnostic.sh`
-
-## Contributing
-
-See [HACKING.md](HACKING.md) for development workflow and coding standards.
+For detailed setup, see [INSTALL.md](INSTALL.md).
 
 ---
 
-Last Updated: 2025-10-22
+Last Updated: 2025-10-24
 

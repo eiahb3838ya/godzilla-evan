@@ -188,15 +188,19 @@ Changes to Python files take effect immediately.
 
 ### CLI Commands
 
+**Note**: Use `python core/python/dev_run.py` instead of `kfc` in container.
+
 ```bash
-# Main command
-kfc --help
+# Show help
+python core/python/dev_run.py --help
 
-# Run strategy
-kfc strategy run --path /app/strategies/helloworld
+# Run strategy (use PM2 recommended)
+python core/python/dev_run.py strategy -n hello \
+  -p strategies/helloworld/helloworld.py \
+  -c strategies/conf.json
 
-# List strategies
-kfc strategy list
+# Show account info
+python core/python/dev_run.py account -s binance show
 ```
 
 ## Testing
@@ -213,24 +217,26 @@ ctest --output-on-failure
 ### Strategy Testing
 
 ```bash
-# Test helloworld strategy
-kfc strategy run --path /app/strategies/helloworld
+# Test helloworld strategy (PM2 recommended)
+cd /app/scripts/binance_test
+pm2 start strategy_hello.json
 
 # Check logs
-tail -f /app/runtime/log/*.log
+pm2 logs strategy:hello
 ```
 
 ### Manual Testing
 
 ```bash
-# Start service
-kfc service start
+# Start all services
+cd /app/scripts/binance_test
+bash run.sh start
 
 # Check status
-kfc service status
+pm2 list
 
-# Stop service
-kfc service stop
+# Stop all services
+bash graceful_shutdown.sh
 ```
 
 ## Coding Standards
@@ -332,25 +338,41 @@ git push origin feature/your-feature
 
 ### Add a New Strategy
 
-1. Create directory in `strategies/`:
-   ```bash
-   mkdir strategies/my_strategy
-   ```
-
-2. Create strategy file:
+1. Create strategy file:
    ```python
-   # strategies/my_strategy/strategy.py
-   from kungfu.wingchun.strategy import Strategy
+   # strategies/my_strategy/my_strategy.py
+   from kungfu.wingchun.constants import *
+   from pywingchun.constants import Side, InstrumentType, OrderType
    
-   class MyStrategy(Strategy):
-       def on_quote(self, quote):
-           # Your logic here
-           pass
+   exchange = Exchange.BINANCE
+   instrument_type = InstrumentType.FFuture
+   
+   def pre_start(context):
+       config = context.get_config()
+       context.subscribe(config["md_source"], [config["symbol"]], 
+                        instrument_type, exchange)
+   
+   def on_depth(context, depth):
+       # Your trading logic here
+       bid = depth.bid_price[0]
+       context.log().info(f"Bid: {bid}")
    ```
 
-3. Run strategy:
+2. Create config file:
+   ```json
+   {
+     "md_source": "binance",
+     "td_source": "binance",
+     "symbol": "btcusdt",
+     "account": "gz_user1"
+   }
+   ```
+
+3. Run via PM2 (recommended):
    ```bash
-   kfc strategy run --path /app/strategies/my_strategy
+   cd /app/scripts/binance_test
+   # Edit strategy_hello.json, change path to your strategy
+   pm2 start modified_config.json
    ```
 
 ### Add a New Exchange Gateway

@@ -358,6 +358,15 @@ Zero modifications needed. See [adr/001-docker.md](adr/001-docker.md) for ration
 - **Libraries**: Boost, OpenSSL, SQLite
 - **Utils**: git, vim, curl, wget
 
+**Note**: PM2 (process manager) is NOT pre-installed. If you plan to use official test scripts (`scripts/binance_test/run.sh`), install PM2:
+```bash
+docker-compose exec app bash
+apt-get update && apt-get install -y nodejs npm
+npm install -g pm2
+```
+
+See [TESTNET.md](TESTNET.md#0-install-pm2-process-manager-️-required) for details.
+
 ### Verify Environment
 
 ```bash
@@ -385,5 +394,5 @@ After successful installation:
 
 ---
 
-Last Updated: 2025-10-22
+Last Updated: 2025-10-28
 
