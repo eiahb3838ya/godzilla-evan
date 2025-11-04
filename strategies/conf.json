@@ -1,11 +1,11 @@
 {
-    "name": "demo strategy",
+    "name": "binance testnet strategy",
     "md_source": "binance",
     "td_source": "binance",
-    "symbol": "eth_usdt",
+    "symbol": "btcusdt",
     "account": "gz_user1",
     "base_coin": "usdt",
-    "quote_coin": "eth",
+    "quote_coin": "btc",
     "base_limit": 10000,
     "quote_limit": 1,
     "action": "nothing"
