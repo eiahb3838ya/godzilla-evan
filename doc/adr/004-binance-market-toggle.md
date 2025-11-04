@@ -4,7 +4,7 @@ Date: 2025-11-03
 
 ## Status
 
-Proposed
+Implemented ✅ (2025-11-04)
 
 ## Context
 
@@ -420,6 +420,145 @@ This caused TD startup failures with "JSON parse error" because `get_td_account_
 - `doc/quantitative-trading-learning-path.plan.md` (1 instance fixed)
 
 **Impact:** Fixes TD startup failures and ensures all future users follow correct account creation method.
+
+---
+
+## Implementation Summary (2025-11-04)
+
+### What We Built
+
+Successfully implemented the Binance Market Toggle feature with full backward compatibility.
+
+**Verified Functionality:**
+- ✅ Spot disabled, Futures enabled: TD Gateway logs show "Spot market disabled by configuration"
+- ✅ No Spot login errors when Futures-only API key is used
+- ✅ All services (master, ledger, md_binance, td_binance) running stable
+- ✅ Configuration persists in database and correctly propagates to C++ layer
+
+### Critical Bug Discovered & Fixed
+
+**The Two-Database Problem:**
+
+During implementation testing, we discovered a critical infrastructure issue where two separate SQLite database files existed:
+- `/root/.config/kungfu/app/system/etc/kungfu/db/live/accounts.db` (wrong)
+- `/app/runtime/system/etc/kungfu/db/live/accounts.db` (correct, used by KF_HOME)
+
+**Root Cause:**
+- `docker-compose.yml` sets `KF_HOME=/app/runtime` (container environment)
+- Manual scripts hardcoded `/root/.config/kungfu/app` paths
+- Operations targeted different databases, causing "ghost account" phenomena
+
+**Impact:**
+- Account creation appeared to fail ("Duplicate account") despite empty database queries
+- Configuration updates silently failed (written to wrong database)
+- Delete operations had no effect
+- Hours wasted debugging "impossible" behavior
+
+**Resolution:**
+1. Deleted the erroneous database path
+2. All scripts now respect `$KF_HOME` environment variable
+3. Configuration updates verified using direct SQLite queries
+4. Documented in DEBUGGING.md Case 3
+
+**Lesson:** Never hardcode paths in containerized environments. Always use environment variables.
+
+### The Manual Database Creation Anti-Pattern
+
+**Additional Discovery:** Manual SQL table creation was a significant design flaw that caused extensive detours.
+
+**The Problem:**
+- SQLAlchemy Model defines `account_id` as primary key (`models.py:25`)
+- Manual SQL in documentation used `user_id` as primary key
+- Schema mismatch caused: `sqlite3.OperationalError: no such column: account_id`
+
+**Impact:**
+- Hours wasted debugging schema inconsistencies
+- Risk of missing fields or incorrect types
+- Maintenance nightmare (Model changes don't sync with manual SQL)
+- False assumption that database structure was correct
+
+**Root Cause:**
+Documentation showed manual table creation instead of using SQLAlchemy's built-in mechanism:
+```sql
+-- ❌ WRONG: Manual SQL (prone to errors)
+CREATE TABLE account_config (
+    user_id TEXT PRIMARY KEY,  -- ← Wrong column name!
+    source_name TEXT,
+    config TEXT
+);
+```
+
+**Correct Approach:**
+```python
+# ✅ RIGHT: Let SQLAlchemy create tables from Model
+from kungfu.data.sqlite.models import Base
+Base.metadata.create_all(engine)
+```
+
+Or use the official interactive command:
+```bash
+python core/python/dev_run.py account -s binance add
+```
+
+**Why This Matters:**
+1. **Schema Consistency**: Model is the single source of truth
+2. **Type Safety**: `Json` column type handled correctly by SQLAlchemy
+3. **Future-Proof**: Model changes automatically propagate
+4. **Zero Manual Sync**: No need to update SQL when Model changes
+
+**Resolution:**
+- Removed all manual SQL table creation from documentation
+- Updated all guides to use official `account add` command
+- Created regression test to verify schema correctness
+
+**Lesson:** Never manually create database tables when using an ORM. Let the ORM manage schema.
+
+### Configuration Update Method
+
+**Issue Found:** SQLAlchemy `session_scope` with `Json` column type does not reliably persist config updates.
+
+**Working Solution:**
+```bash
+docker exec godzilla-dev bash -c "python3 << 'EOF'
+import sqlite3, json
+conn = sqlite3.connect('/app/runtime/system/etc/kungfu/db/live/accounts.db')
+cursor = conn.cursor()
+cursor.execute('SELECT config FROM account_config WHERE account_id=\"binance_gz_user1\"')
+config = json.loads(cursor.fetchone()[0])
+config['enable_spot'] = False
+config['enable_futures'] = True
+cursor.execute('UPDATE account_config SET config=? WHERE account_id=?', 
+               (json.dumps(config), 'binance_gz_user1'))
+conn.commit()
+conn.close()
+EOF
+"
+```
+
+### Verification Commands
+
+```bash
+# Check TD logs for market toggle confirmation
+docker exec godzilla-dev tail -50 /root/.pm2/logs/td-binance-gz-user1-out.log | grep -E '(Spot|Futures|disabled|enabled)'
+
+# Expected output:
+# [trader_binance.cpp:63] Spot market disabled by configuration
+# [trader_binance.cpp:98] Connecting BINANCE TD for gz_user1 (Spot: disabled, Futures: enabled)
+```
+
+### Files Actually Modified
+
+**C++ Layer:**
+- `core/extensions/binance/include/common.h` (lines 26-27, 51-52)
+- `core/extensions/binance/src/trader_binance.cpp` (constructor, on_start, _check_status)
+
+**Documentation:**
+- `doc/DEBUGGING.md` (added Case 3: Two-Database Problem)
+- `doc/adr/004-binance-market-toggle.md` (this file)
+
+**No Changes Needed:**
+- Python layer works correctly with existing code
+- Database schema already supports arbitrary JSON config fields
 
 ---
 

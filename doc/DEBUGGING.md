@@ -1156,3 +1156,174 @@ pm2 list  # 验证
 - [LOG_LOCATIONS.md](./LOG_LOCATIONS.md) - PM2 日志位置
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - 系统架构和事件流
 
+---
+
+## 案例 3：两个数据库路径导致的账户管理混乱
+
+**日期**: 2025-11-04  
+**问题严重程度**: 🔴 Critical  
+**解决状态**: ✅ 已解决
+
+### 1. 问题情境
+
+#### 背景
+- **目标**: 使用 `kfc account -s binance add` 命令创建账户
+- **症状**: 重复显示 "Duplicate account" 错误，即使数据库查询显示为空
+- **根本原因**: 系统同时存在两个不同的数据库文件，手动脚本和命令工具各自操作不同的数据库
+
+#### 表面现象
+```bash
+# 尝试创建账户
+$ docker exec -it godzilla-dev bash -c "cd /app && python3 core/python/dev_run.py account -s binance add"
+? 请填写账户 user_id  gz_user1
+? 请填写access_key  ****
+? 请填写 secret_key  ****
+Duplicate account  # ❌ 错误
+
+# 但直接查询数据库显示为空
+$ docker exec godzilla-dev bash -c "python3 -c '...'  # 查询数据库
+当前数据库中的账户数: 0  # ✅ 数据库确实为空！
+```
+
+### 2. 调查过程
+
+#### 发现1: 删除操作无效
+```python
+# 调用删除方法
+db.delete_account('binance_gz_user1')
+# 显示: ✅ 已删除账户 binance_gz_user1
+
+# 但再次创建仍然失败
+# 显示: Duplicate account
+```
+
+#### 发现2: 两个不同的数据库路径
+通过添加调试代码发现：
+
+```python
+# 命令工具使用的路径（来自 docker-compose.yml 的 KF_HOME）
+[account.__init__] DB file path: /app/runtime/system/etc/kungfu/db/live/accounts.db
+[account.__init__] Accounts in DB BEFORE AccountsDB(): 1  # ❌ 有账户
+
+# 手动脚本使用的路径（硬编码）
+# 我们操作的: /root/.config/kungfu/app/system/etc/kungfu/db/live/accounts.db
+数据库中的账户数: 0  # ✅ 空的
+```
+
+### 3. 根本原因
+
+#### 环境变量配置
+**`docker-compose.yml` 中的配置**:
+```yaml
+environment:
+  - KF_HOME=/app/runtime  # ← 容器级别的环境变量
+```
+
+#### 代码行为差异
+
+**1. 命令工具 (`kfc account add`):**
+```python
+# kungfu/command/__init__.py:87
+os.environ['KF_HOME'] = ctx.home = home
+# 但 home 参数为空时，使用环境变量 KF_HOME
+# → 使用 /app/runtime
+```
+
+**2. 手动脚本 (错误做法):**
+```python
+# ❌ 错误：硬编码路径
+os.environ['KF_HOME'] = '/root/.config/kungfu/app'
+locator = kfj.Locator('/root/.config/kungfu/app')
+# → 使用 /root/.config/kungfu/app
+```
+
+### 4. 危险性分析
+
+#### 数据不一致风险
+1. **隐蔽性强**: 两个数据库都存在且都"工作正常"，但彼此独立
+2. **操作失效**: 手动脚本的所有数据库操作（增删改查）不会影响实际运行的服务
+3. **调试困难**: 
+   - SQLite 直接查询显示为空
+   - SQLAlchemy 查询显示有数据
+   - 两者看似矛盾，实际是查询了不同的文件
+
+#### 潜在后果
+- **数据丢失**: 可能误删正确的数据库
+- **配置混乱**: 测试环境和生产环境使用不同的账户配置
+- **浪费时间**: 花费大量时间调试"幽灵问题"
+
+### 5. 解决方案
+
+#### ✅ 最小侵入方案：统一使用环境变量
+
+**原则**: 所有脚本都应该尊重容器的 `KF_HOME` 环境变量，而不是硬编码路径。
+
+**正确做法**:
+```python
+# ✅ 正确：使用环境变量（已由 docker-compose.yml 设置）
+import os, pyyjj
+import kungfu.yijinjing.journal as kfj
+
+# 不要设置 KF_HOME！使用容器已有的环境变量
+# os.environ['KF_HOME'] = '/some/path'  # ❌ 删除这行
+
+# 让 Locator 自动使用 $KF_HOME 环境变量
+locator = kfj.Locator(os.environ.get('KF_HOME', os.path.expanduser('~/.config/kungfu/app')))
+location = pyyjj.location(pyyjj.mode.LIVE, pyyjj.category.SYSTEM, 'etc', 'kungfu', locator)
+```
+
+#### 清理步骤
+
+```bash
+# 1. 删除错误的数据库文件（避免混淆）
+docker exec godzilla-dev rm -rf /root/.config/kungfu/app/system/etc/kungfu/db
+
+# 2. 验证正确的数据库路径
+docker exec godzilla-dev bash -c "echo \$KF_HOME"
+# 输出: /app/runtime
+
+# 3. 所有操作使用正确的路径
+# 正确路径: /app/runtime/system/etc/kungfu/db/live/accounts.db
+```
+
+### 6. 最佳实践
+
+#### 环境变量优先级
+1. **容器环境变量** (docker-compose.yml) - 最高优先级
+2. **命令行参数** (`--home`)
+3. **默认值** (`~/.config/kungfu/app`)
+
+#### 脚本编写规范
+```python
+# ✅ 推荐：自动适配环境
+import os
+kf_home = os.environ.get('KF_HOME')
+if not kf_home:
+    kf_home = os.path.expanduser('~/.config/kungfu/app')
+
+# ❌ 禁止：硬编码路径
+kf_home = '/app/runtime'  # 不要这样做
+```
+
+### 7. 经验总结
+
+#### 关键教训
+1. **永远不要硬编码路径**: 使用环境变量或配置文件
+2. **理解容器化环境**: Docker 容器有自己的环境变量配置
+3. **验证实际路径**: 调试时首先确认操作的是哪个文件
+4. **使用官方方式**: 命令工具 (`kfc`) 已经正确处理了环境变量
+
+#### 调试技巧
+```python
+# 在脚本开头添加路径验证
+import sys
+db_path = location.locator.layout_file(location, pyyjj.layout.SQLITE, 'accounts')
+print(f'Using database: {db_path}', file=sys.stderr)
+```
+
+### 8. 相关文档
+
+- [docker-compose.yml](../../docker-compose.yml) - 容器环境变量配置
+- [INSTALL.md](./INSTALL.md) - 安装和配置指南
+- [HACKING.md](./HACKING.md) - 开发环境设置
+
