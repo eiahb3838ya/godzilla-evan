@@ -36,27 +36,48 @@ namespace kungfu {
             TraderBinance::TraderBinance(bool low_latency, yijinjing::data::locator_ptr locator, const std::string& account_id, const std::string& json_config):
                 Trader(low_latency, std::move(locator), SOURCE_BINANCE, account_id) {
                 yijinjing::log::copy_log_settings(get_io_device()->get_home(), SOURCE_BINANCE);
-                config_ = nlohmann::json::parse(json_config);
-                rest_ptr_ = std::make_shared<binapi::rest::api>(
-                    ioctx_
-                    , config_.spot_rest_host                      //"api.binance.com"
-                    , std::to_string(config_.spot_rest_port)      //"443"
-                    , config_.access_key
-                    , config_.secret_key
-                    , 10000
-                    );
-                frest_ptr_ = std::make_shared<binapi::rest::api>(
-                    ioctx_
-                    , config_.ubase_rest_host                      //"fapi.binance.com"
-                    , std::to_string(config_.ubase_rest_port)      //"443"
-                    , config_.access_key
-                    , config_.secret_key
-                    , 10000
-                    );
-                ws_ptr_ = std::make_shared<binapi::ws::websockets>(
-                    ioctx_, config_.spot_wss_host, std::to_string(config_.spot_wss_port));
-                fws_ptr_ = std::make_shared<binapi::ws::websockets>(
-                    ioctx_, config_.ubase_wss_host, std::to_string(config_.ubase_wss_port));
+                
+                auto first_parse = nlohmann::json::parse(json_config);
+                nlohmann::json config_json;
+                if (first_parse.is_string()) {
+                    config_json = nlohmann::json::parse(first_parse.get<std::string>());
+                } else {
+                    config_json = first_parse;
+                }
+                
+                config_ = config_json.get<Configuration>();
+                
+                // Initialize Spot market components (Guard Clause Pattern - ADR-004)
+                if (config_.enable_spot) {
+                    rest_ptr_ = std::make_shared<binapi::rest::api>(
+                        ioctx_
+                        , config_.spot_rest_host                      //"api.binance.com"
+                        , std::to_string(config_.spot_rest_port)      //"443"
+                        , config_.access_key
+                        , config_.secret_key
+                        , 10000
+                        );
+                    ws_ptr_ = std::make_shared<binapi::ws::websockets>(
+                        ioctx_, config_.spot_wss_host, std::to_string(config_.spot_wss_port));
+                } else {
+                    SPDLOG_INFO("Spot market disabled by configuration");
+                }
+                
+                // Initialize Futures market components (Guard Clause Pattern - ADR-004)
+                if (config_.enable_futures) {
+                    frest_ptr_ = std::make_shared<binapi::rest::api>(
+                        ioctx_
+                        , config_.ubase_rest_host                      //"fapi.binance.com"
+                        , std::to_string(config_.ubase_rest_port)      //"443"
+                        , config_.access_key
+                        , config_.secret_key
+                        , 10000
+                        );
+                    fws_ptr_ = std::make_shared<binapi::ws::websockets>(
+                        ioctx_, config_.ubase_wss_host, std::to_string(config_.ubase_wss_port));
+                } else {
+                    SPDLOG_INFO("Futures market disabled by configuration");
+                }
             }
 
             TraderBinance::~TraderBinance() {}
@@ -75,17 +96,25 @@ namespace kungfu {
                 });
                 std::string runtime_folder = get_runtime_folder();
                 SPDLOG_INFO(
-                    "Connecting BINANCE TD for {} at {}:{} with runtime folder {}",
-                    config_.user_id, config_.spot_rest_host, config_.spot_rest_port, runtime_folder);
-                // {
-                //     auto start_uds = rest_ptr_->start_user_data_stream();
-                //     if (!start_uds) {
-                //         publish_state(msg::data::BrokerState::LoggedInFailed);
-                //         SPDLOG_ERROR("spot login failed, error_id: {}, error_msg: {}", start_uds.ec, start_uds.errmsg);
-                //         throw wingchun_error("cannot login spot");
-                //     }
-                // }
-                _start_userdata(InstrumentType::FFuture);
+                    "Connecting BINANCE TD for {} (Spot: {}, Futures: {}) with runtime folder {}",
+                    config_.user_id, 
+                    config_.enable_spot ? "enabled" : "disabled",
+                    config_.enable_futures ? "enabled" : "disabled",
+                    runtime_folder);
+                
+                // Guard Clause Pattern: Only initialize enabled markets (ADR-004)
+                if (config_.enable_futures && frest_ptr_) {
+                    _start_userdata(InstrumentType::FFuture);
+                } else {
+                    SPDLOG_INFO("Skipping Futures initialization (disabled or client unavailable)");
+                }
+                
+                if (config_.enable_spot && rest_ptr_) {
+                    _start_userdata(InstrumentType::Spot);
+                } else {
+                    SPDLOG_INFO("Skipping Spot initialization (disabled or client unavailable)");
+                }
+                
                 add_time_interval(time_unit::NANOSECONDS_PER_SECOND * 5, std::bind(&TraderBinance::_check_status, this, std::placeholders::_1));
                 publish_state(BrokerState::Ready);
                 SPDLOG_INFO("login success");
@@ -339,11 +368,12 @@ namespace kungfu {
                             });
                     }
                 }
-                if (ws_ptr_->fetch_reconnect_flag()) {
+                // Guard Clause Pattern: Only reconnect enabled markets (ADR-004)
+                if (config_.enable_spot && rest_ptr_ && ws_ptr_ && ws_ptr_->fetch_reconnect_flag()) {
                     _start_userdata(InstrumentType::Spot);
                     SPDLOG_TRACE("TraderXTC::_update_order spot: {}", order_data_.size());
                 }
-                if (fws_ptr_->fetch_reconnect_flag()) {
+                if (config_.enable_futures && frest_ptr_ && fws_ptr_ && fws_ptr_->fetch_reconnect_flag()) {
                     _start_userdata(InstrumentType::FFuture);
                     SPDLOG_TRACE("TraderXTC::_update_order ffuture: {}", order_data_.size());
                 }

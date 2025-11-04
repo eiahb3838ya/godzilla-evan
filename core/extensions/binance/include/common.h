@@ -20,6 +20,12 @@ namespace kungfu
                 std::string user_id;
                 std::string access_key;
                 std::string secret_key;
+                
+                // Market toggle flags (ADR-004)
+                // Defaults to true for backward compatibility
+                bool enable_spot = true;
+                bool enable_futures = true;
+                
                 std::string spot_rest_host;  // 现货rest域名
                 int spot_rest_port;          // 现货rest端口
                 std::string spot_wss_host;   // 现货websocket域名
@@ -39,18 +45,29 @@ namespace kungfu
                 j.at("user_id").get_to(c.user_id);
                 j.at("access_key").get_to(c.access_key);
                 j.at("secret_key").get_to(c.secret_key);
-                c.spot_rest_host = "api.binance.com";
+                
+                // Market toggle flags (ADR-004)
+                // Use value() with default for backward compatibility
+                c.enable_spot = j.value("enable_spot", true);
+                c.enable_futures = j.value("enable_futures", true);
+                
+                // Binance Testnet 配置
+                // Spot Testnet (testnet.binance.vision API key)
+                c.spot_rest_host = "testnet.binance.vision";
                 c.spot_rest_port = 443;
-                c.spot_wss_host = "stream.binance.com";
+                c.spot_wss_host = "stream.testnet.binance.vision";
                 c.spot_wss_port = 443;
-                c.ubase_rest_host = "fapi.binance.com";
+                
+                // Futures Testnet (需要单独的 Futures Testnet API key)
+                // 参考: https://developers.binance.com/docs/derivatives/usds-margined-futures/general-info
+                c.ubase_rest_host = "testnet.binancefuture.com";
                 c.ubase_rest_port = 443;
-                c.ubase_wss_host = "fstream.binance.com";
-                c.ubase_wss_port = 443;
-                c.cbase_rest_host = "dapi.binance.com";
+                c.ubase_wss_host = "stream.binancefuture.com";
+                c.ubase_wss_port = 443;  // 修正：使用标准 HTTPS 端口
+                c.cbase_rest_host = "testnet.binancefuture.com";
                 c.cbase_rest_port = 443;
-                c.cbase_wss_host = "dstream.binance.com";
-                c.cbase_wss_port = 443;
+                c.cbase_wss_host = "dstream.binancefuture.com";
+                c.cbase_wss_port = 443;  // 修正：使用标准 HTTPS 端口
             }
         }
     }
