@@ -51,6 +51,9 @@ def make_questions(schema, defaults={}):
         }
         if config['key'] in defaults:
             question['default'] = str(defaults[config['key']])
+        # 为非必填的 bool 字段添加默认值提示（向后兼容）
+        elif not config.get('required', True) and config['type'] == 'bool':
+            question['default'] = 'true'
         return question
     return map(make_question, schema['config'])
 
