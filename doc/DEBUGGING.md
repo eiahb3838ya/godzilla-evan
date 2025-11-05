@@ -15,6 +15,10 @@
 - 如果你想直接了解正确的启动方式 → 跳转到 [案例 2](#案例-2pm2--数据库配置完整系统启动)
 - 如果你想深入理解系统架构 → 从 [案例 1](#案例-1td-gateway-启动但核心逻辑未执行) 开始阅读
 
+> 重要更新（2025-11-05）：
+> - 禁止直接通过 SQL/SQLite 修改账户配置；请使用交互式 CLI：`python core/python/dev_run.py account -s binance add`
+> - 统一使用容器环境变量 `KF_HOME=/app/runtime`，避免出现“两套数据库”问题。
+
 ---
 
 ## 案例 1：TD Gateway 启动但核心逻辑未执行
