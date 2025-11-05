@@ -54,5 +54,5 @@ For detailed setup, see [INSTALL.md](INSTALL.md).
 
 ---
 
-Last Updated: 2025-11-04
+Last Updated: 2025-11-05
 

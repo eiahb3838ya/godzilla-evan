@@ -40,6 +40,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 5. **Test data flow end-to-end** when debugging configuration issues (Python → DB → C++)
 6. **Never manually create database tables** - let ORM manage schema (manual SQL caused schema mismatch)
 
+#### Verified
+- Services started via PM2 and all online (master, ledger, md_binance, td_binance:gz_user1)
+- TD logs confirm Futures-only with Spot disabled by configuration
+- No Spot `-2015` errors when using Futures-only keys
+- TD runtime log path: `/app/runtime/td/binance/gz_user1/log/live/gz_user1.log`
+
 ---
 
 ### Binance Testnet Integration & Documentation - 2025-10-28
@@ -154,5 +160,5 @@ git log --oneline
 
 ---
 
-Last Updated: 2025-10-22
+Last Updated: 2025-11-05
 
