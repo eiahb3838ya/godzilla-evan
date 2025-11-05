@@ -26,6 +26,20 @@
                     "type": "password",
                     "errMsg": "请填写 secret_key",
                     "required": true
+                },
+                {
+                    "key": "enable_spot",
+                    "name": "启用现货交易",
+                    "type": "bool",
+                    "errMsg": "是否启用现货市场登录？(true/false)",
+                    "required": false
+                },
+                {
+                    "key": "enable_futures",
+                    "name": "启用期货交易",
+                    "type": "bool",
+                    "errMsg": "是否启用期货市场登录？(true/false)",
+                    "required": false
                 }
             ]
         }
