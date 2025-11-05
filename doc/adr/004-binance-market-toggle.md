@@ -123,6 +123,33 @@ inline void from_json(const nlohmann::json &j, Configuration &c) {
 
 ### File Modifications
 
+#### 0. `core/extensions/binance/package.json`
+
+**Location**: Lines 8-30 (config array)
+
+**Add two new config items** (after secret_key):
+```json
+{
+    "key": "enable_spot",
+    "name": "启用现货交易",
+    "type": "bool",
+    "errMsg": "是否启用现货市场登录？(true/false)",
+    "required": false
+},
+{
+    "key": "enable_futures",
+    "name": "启用期货交易",
+    "type": "bool",
+    "errMsg": "是否启用期货市场登录？(true/false)",
+    "required": false
+}
+```
+
+**Behavior**:
+- User inputs `true` or `false` as text
+- `encrypt()` converts to Python boolean automatically (line 66-67 in `__init__.py`)
+- Missing fields default to `true` in C++ layer (backward compatible)
+
 #### 1. `core/extensions/binance/include/common.h`
 
 **Location**: Lines 18-35 (Configuration struct)
@@ -229,38 +256,20 @@ if (config_.enable_futures && frest_ptr_ && fws_ptr_->fetch_reconnect_flag()) {
 }
 ```
 
-#### 3. Database Configuration (User-facing)
+#### 3. Account Configuration (CLI Only)
 
-**File**: User's SQLite database at `/root/.config/kungfu/app/kungfu.db`
-
-**Table**: `account_config.config` (JSON column)
-
-**Example 1: Futures Only** (Recommended for Futures Testnet)
-```json
-{
-    "access_key": "YOUR_FUTURES_KEY",
-    "secret_key": "YOUR_FUTURES_SECRET",
-    "enable_spot": false
-}
+**Interactive CLI (Recommended, default)**
+```bash
+python core/python/dev_run.py account -s binance add
+# Follow prompts:
+# - user_id: gz_user1
+# - access_key: YOUR_KEY
+# - secret_key: YOUR_SECRET
+# - 是否启用现货市场登录？(true/false): false
+# - 是否启用期货市场登录？(true/false): true
 ```
 
-**Example 2: Spot Only**
-```json
-{
-    "access_key": "YOUR_SPOT_KEY",
-    "secret_key": "YOUR_SPOT_SECRET",
-    "enable_futures": false
-}
-```
-
-**Example 3: Both Enabled** (Default, backward compatible)
-```json
-{
-    "access_key": "YOUR_KEY",
-    "secret_key": "YOUR_SECRET"
-}
-```
-*Note: Omitting flags defaults to `true` for both markets*
+> Note: Direct database updates are deprecated (can cause schema/path drift). Always use the interactive CLI.
 
 #### 4. Documentation Updates
 
@@ -349,6 +358,38 @@ pm2 logs --lines 20
 UPDATE account_config SET config = json_remove(config, '$.enable_spot');
 pm2 restart td_binance:gz_user1
 # Expected: Both markets initialize
+```
+
+**Interactive CLI Test Cases**:
+```bash
+# Test Case 1: Futures-Only Account (Interactive)
+python core/python/dev_run.py account -s binance add
+# 输入:
+#   user_id: gz_user1
+#   access_key: YOUR_FUTURES_KEY
+#   secret_key: YOUR_FUTURES_SECRET
+#   是否启用现货市场登录？(true/false): false
+#   是否启用期货市场登录？(true/false): true
+
+# 验证数据库
+docker exec godzilla-dev sqlite3 /app/runtime/system/etc/kungfu/db/live/accounts.db \
+    'SELECT config FROM account_config WHERE account_id="binance_gz_user1"' | \
+python3 -m json.tool
+# 预期输出包含: "enable_spot": false, "enable_futures": true
+
+# 启动 TD Gateway
+pm2 start ecosystem.config.js --only td_binance
+
+# 检查日志
+pm2 logs td_binance --lines 20 | grep -E '(Spot|Futures|disabled|enabled)'
+# 预期输出:
+# [info] Spot market disabled by configuration
+# [info] Futures market initialized
+
+# Test Case 2: 默认行为（向后兼容）
+# 删除账户，重新创建，对 enable_spot/enable_futures 问题直接按回车（使用默认值）
+# 验证 DB 中字段为 true（或不存在，C++ 使用默认值）
+# 验证日志中两个市场都尝试初始化
 ```
 
 ## Design Patterns Applied
@@ -538,12 +579,18 @@ EOF
 ### Verification Commands
 
 ```bash
-# Check TD logs for market toggle confirmation
-docker exec godzilla-dev tail -50 /root/.pm2/logs/td-binance-gz-user1-out.log | grep -E '(Spot|Futures|disabled|enabled)'
+# Check TD logs for market toggle confirmation (PM2)
+docker exec godzilla-dev pm2 logs td_binance:gz_user1 --lines 30 | grep -E '(Spot|Futures|disabled|enabled|login)'
+
+# Or check the exact runtime log file
+docker exec godzilla-dev tail -50 /app/runtime/td/binance/gz_user1/log/live/gz_user1.log | \
+  grep -E '(Spot|Futures|disabled|enabled|login)'
 
 # Expected output:
-# [trader_binance.cpp:63] Spot market disabled by configuration
-# [trader_binance.cpp:98] Connecting BINANCE TD for gz_user1 (Spot: disabled, Futures: enabled)
+# [info] Spot market disabled by configuration
+# [info] Connecting BINANCE TD for gz_user1 (Spot: disabled, Futures: enabled)
+# [info] Skipping Spot initialization (disabled or client unavailable)
+# [info] login success
 ```
 
 ### Files Actually Modified
@@ -561,5 +608,19 @@ docker exec godzilla-dev tail -50 /root/.pm2/logs/td-binance-gz-user1-out.log | 
 - Database schema already supports arbitrary JSON config fields
 
 ---
+
+## Current Status (2025-11-05)
+
+- All core services started via official script and are online (master, ledger, md_binance, td_binance:gz_user1)
+- TD confirms Futures-only login with Spot disabled by configuration
+- No Spot "-2015" errors observed; Spot initialization skipped as expected
+- TD log path verified: `/app/runtime/td/binance/gz_user1/log/live/gz_user1.log`
+
+```
+[info] Spot market disabled by configuration
+[info] Connecting BINANCE TD for gz_user1 (Spot: disabled, Futures: enabled)
+[info] Skipping Spot initialization (disabled or client unavailable)
+[info] login success
+```
 
 Last Updated: 2025-11-04
