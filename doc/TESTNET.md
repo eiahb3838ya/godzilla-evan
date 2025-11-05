@@ -150,29 +150,21 @@ python core/python/dev_run.py account -s binance add
 # - User ID: gz_user1 (MUST use this for official scripts)
 # - Access Key: <paste your API key>
 # - Secret Key: <paste your secret key>
+# - 是否启用现货市场登录？(true/false): false  ← 期货专用 API 请填 false
+# - 是否启用期货市场登录？(true/false): true
 ```
 
 **⚠️ Important**: Use `gz_user1` as User ID to match official scripts.
 
 ---
 
-#### Method B: Manual Database Creation (For Docker/non-interactive)
+#### Method B: Manual Database Creation (Deprecated)
 
-If interactive method fails with "AssertionError" or "no TTY":
+This method is deprecated. Avoid direct SQL/SQLite operations. Always use the interactive CLI (Method A). If you hit a non-TTY issue, ensure you run with an interactive terminal:
 
 ```bash
-docker-compose exec app bash
-
-# Create database directory
-mkdir -p /root/.config/kungfu/app
-
-# Create database with Python script
-python3 << 'EOF'
-import sqlite3
-import json
-import os
-
-EOF
+docker exec -it godzilla-dev bash
+python core/python/dev_run.py account -s binance add
 ```
 
 ### Configure Account
@@ -188,6 +180,8 @@ python core/python/dev_run.py account -s binance add
 - **user_id**: `gz_user1`
 - **access_key**: Your Binance Testnet API Key
 - **secret_key**: Your Binance Testnet Secret Key
+- **是否启用现货市场登录？(true/false)**: `false` (期货专用 API 请填 false)
+- **是否启用期货市场登录？(true/false)**: `true`
 
 This command automatically creates the correct database table structure
 
@@ -207,8 +201,8 @@ python core/python/dev_run.py account -s binance show
 
 **Troubleshooting**:
 - `python: command not found` → Run `ln -sf /usr/bin/python3 /usr/bin/python`
-- `sqlite3.OperationalError` → Database path or table name incorrect
-- Keys showing with `\n` → Strip newlines when pasting
+- Interactive prompt fails (no TTY) → Use `docker exec -it godzilla-dev bash`
+- Do not manually create tables; the CLI will create them using the correct schema
 
 ---
 
@@ -247,6 +241,22 @@ pm2 list
 │ 2  │ md_binance             │ fork    │ 1236    │ 20s      │ 0      │ online    │
 │ 3  │ td_binance:gz_user1    │ fork    │ 1237    │ 15s      │ 0      │ online    │
 └────┴────────────────────────┴─────────┴─────────┴──────────┴────────┴───────────┘
+```
+
+### Quick Verify: Market Toggle
+
+```bash
+# Live logs via PM2
+pm2 logs td_binance:gz_user1 --lines 30 | grep -E '(Spot|Futures|disabled|enabled|login)'
+
+# Expected:
+# [info] Spot market disabled by configuration
+# [info] Connecting BINANCE TD for gz_user1 (Spot: disabled, Futures: enabled)
+# [info] Skipping Spot initialization (disabled or client unavailable)
+# [info] login success
+
+# Exact TD log file (path):
+cat /app/runtime/td/binance/gz_user1/log/live/gz_user1.log
 ```
 
 **What `run.sh start` does**:
@@ -440,6 +450,9 @@ ls -lh /root/.config/kungfu/app/kungfu.db
 # Add account using official command
 cd ~/dev/godzilla-community
 python core/python/dev_run.py account -s binance add
+# Follow prompts (include market toggle settings):
+# - 是否启用现货市场登录？(true/false): false
+# - 是否启用期货市场登录？(true/false): true
 
 # Verify
 python core/python/dev_run.py account -s binance show
@@ -768,80 +781,27 @@ if (config_.enable_spot && rest_ptr_) {
 
 ### Disabling Spot Login (Reduce Log Noise)
 
-**Problem**: When using Futures-only API keys, the system attempts Spot login every 5 seconds, generating `-2015` error logs.
+**Problem**: When using Futures-only API keys, Spot login attempts generate `-2015` error logs.
 
-**Solution**: Disable Spot market in your database configuration.
-
-#### Update Existing Account
+**Recommended (CLI only)**: Set market toggles during interactive account creation. Avoid direct DB edits.
 
 ```bash
-# Method 1: Using SQLite command line
-sqlite3 /root/.config/kungfu/app/kungfu.db
-UPDATE account_config 
-SET config = json_set(config, '$.enable_spot', json('false'))
-WHERE user_id = 'gz_user1';
-.quit
+# Interactive account creation
+python core/python/dev_run.py account -s binance add
+# Prompts:
+#   user_id: gz_user1
+#   access_key: <YOUR_KEY>
+#   secret_key: <YOUR_SECRET>
+#   是否启用现货市场登录？(true/false): false
+#   是否启用期货市场登录？(true/false): true
 
-# Method 2: Using Python script
-python3 << 'EOF'
-import sqlite3, json
-conn = sqlite3.connect('/root/.config/kungfu/app/kungfu.db')
-cursor = conn.cursor()
-
-# Get current config
-cursor.execute("SELECT config FROM account_config WHERE user_id = ?", ('gz_user1',))
-row = cursor.fetchone()
-if row:
-    config = json.loads(row[0])
-    config['enable_spot'] = False  # Disable Spot
-    cursor.execute("UPDATE account_config SET config = ? WHERE user_id = ?",
-                   (json.dumps(config), 'gz_user1'))
-    conn.commit()
-    print("✅ Spot market disabled")
-else:
-    print("❌ Account not found")
-conn.close()
-EOF
-```
-
-#### Create New Account with Spot Disabled
-
-```python
-import sqlite3, json
-
-conn = sqlite3.connect('/root/.config/kungfu/app/kungfu.db')
-cursor = conn.cursor()
-
-config = {
-    'access_key': 'YOUR_FUTURES_KEY',
-    'secret_key': 'YOUR_FUTURES_SECRET',
-    'enable_spot': False,      # Disable Spot
-    'enable_futures': True     # Enable Futures (optional, default is true)
-}
-
-cursor.execute('INSERT OR REPLACE INTO account_config VALUES (?, ?, ?, ?)',
-               ('gz_user1', 'binance', 1, json.dumps(config)))
-conn.commit()
-conn.close()
-print("✅ Account created with Spot disabled")
-```
-
-#### Verify Configuration
-
-```bash
-# Restart TD Gateway
-pm2 restart td_binance:gz_user1
-
-# Check logs
-pm2 logs td_binance:gz_user1 --lines 20
-
-# Expected output:
+# Verify in logs
+pm2 logs td_binance:gz_user1 --lines 20 | grep -E '(Spot|Futures|disabled|enabled|login)'
+# Expected:
+# [info] Spot market disabled by configuration
 # [info] Connecting BINANCE TD for gz_user1 (Spot: disabled, Futures: enabled)
 # [info] Skipping Spot initialization (disabled or client unavailable)
 # [info] login success
-# 
-# You should NOT see:
-# [error] spot login failed, error_id: -2015
 ```
 
 #### Configuration Options
