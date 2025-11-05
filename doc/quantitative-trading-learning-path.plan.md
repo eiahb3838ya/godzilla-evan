@@ -18,7 +18,7 @@
 
 ## 阶段2：配置并启动完整系统 ⭐
 
-> **参考文档**：`.doc/TESTNET.md`（包含详细故障排除）
+> **参考文档**：`TESTNET.md`（包含详细故障排除）
 
 ### 系统架构
 ```
@@ -52,18 +52,17 @@ ln -sf /usr/bin/python3 /usr/bin/python
 
 ---
 
-### 2.2 配置账户数据库
+### 2.2 配置账户（交互式，推荐）
 
-**手动创建数据库**（在容器中执行）：
 ```bash
-mkdir -p /root/.config/kungfu/app
-
 # 使用官方命令添加账户（自动创建正确表结构）
 python core/python/dev_run.py account -s binance add
 # 交互输入：
 #   user_id: gz_user1
 #   access_key: YOUR_API_KEY
 #   secret_key: YOUR_SECRET_KEY
+#   是否启用现货市场登录？(true/false): false  ← 期货专用 API 填 false
+#   是否启用期货市场登录？(true/false): true
 ```
 
 **验证**：
@@ -72,7 +71,9 @@ python core/python/dev_run.py account -s binance show
 # 应显示 gz_user1 及密钥前缀
 ```
 
-**说明**：该命令会自动创建正确的数据库表结构（使用 `account_id` 列），与代码中的 SQLAlchemy Model 定义一致
+**说明**：
+- 该命令会自动创建正确的数据库表结构（使用 `account_id` 列），与代码中的 SQLAlchemy Model 定义一致
+- 避免手动创建/修改数据库；容器内使用 `KF_HOME=/app/runtime` 的数据库路径
 
 ---
 
