@@ -1,0 +1,46 @@
+{
+  "description": "Example configurations for Binance market toggle (ADR-004)",
+  "configurations": {
+    "futures_only": {
+      "description": "Recommended for Futures Testnet - disables Spot to eliminate -2015 errors",
+      "config": {
+        "access_key": "YOUR_FUTURES_API_KEY",
+        "secret_key": "YOUR_FUTURES_SECRET_KEY",
+        "enable_spot": false,
+        "enable_futures": true
+      }
+    },
+    "spot_only": {
+      "description": "For Spot trading only - disables Futures",
+      "config": {
+        "access_key": "YOUR_SPOT_API_KEY",
+        "secret_key": "YOUR_SPOT_SECRET_KEY",
+        "enable_spot": true,
+        "enable_futures": false
+      }
+    },
+    "both_enabled_explicit": {
+      "description": "Explicitly enable both markets (same as default)",
+      "config": {
+        "access_key": "YOUR_API_KEY",
+        "secret_key": "YOUR_SECRET_KEY",
+        "enable_spot": true,
+        "enable_futures": true
+      }
+    },
+    "default_backward_compatible": {
+      "description": "Default configuration - both markets enabled implicitly",
+      "config": {
+        "access_key": "YOUR_API_KEY",
+        "secret_key": "YOUR_SECRET_KEY"
+      },
+      "note": "When enable_spot and enable_futures are omitted, both default to true"
+    }
+  },
+  "usage": {
+    "sqlite_update": "UPDATE account_config SET config = json_set(config, '$.enable_spot', json('false')) WHERE user_id = 'gz_user1';",
+    "python_script": "See doc/TESTNET.md section 'Disabling Spot Login' for complete examples"
+  }
+}
+
+

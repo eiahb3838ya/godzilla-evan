@@ -72,7 +72,7 @@ def on_ticker(context, ticker):
     config = context.get_config()
     context.log().info(f'{config["name"]}')
 
-def on_transaction(context, transaction):
+def on_transac       tion(context, transaction):
     context.log().info("{} {}".format(transaction.symbol, transaction.exchange_id))
 
 
