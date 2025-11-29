@@ -1,9 +1,9 @@
 ---
 title: Change History
-updated_at: 2025-11-17
+updated_at: 2025-11-24
 owner: core-dev
 lang: en
-tokens_estimate: 1100
+tokens_estimate: 1800
 layer: 00_index
 tags: [changelog, history, versions, releases]
 purpose: "All notable changes to this project documented"
@@ -16,6 +16,180 @@ All notable changes to this project will be documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
+
+### Symbol Naming Convention Documentation - 2025-11-26
+
+#### Added
+- **New Documentation**: `.doc/40_config/symbol_naming_convention.md`
+  - **Purpose**: Document critical symbol format requirements and prevent subscription/order failures
+  - **Root Cause**: During debugging, discovered symbol format errors caused:
+    1. `IndexError: list index out of range` when placing orders
+    2. Silent subscription failure (strategy not receiving market data despite successful subscription)
+    3. Required C++ rebuild to fix after config changes
+  - **Content**:
+    - Symbol format specification: `lowercase_base_underscore_quote` (e.g., `"btc_usdt"`)
+    - Complete flow tracing: subscription → hash matching → event filtering → callback
+    - Base/quote coin extraction mechanism ([book.py:122-123](../../core/python/kungfu/wingchun/book/book.py#L122-L123))
+    - Subscription hash matching system ([common.h:354-365](../../core/cpp/wingchun/include/kungfu/wingchun/common.h#L354-L365))
+    - Exchange format conversion ([type_convert_binance.h:111-121](../../core/extensions/binance/include/type_convert_binance.h#L111-L121))
+    - Common errors with examples and fixes
+    - Compilation dependency requirements
+    - Token estimate: ~5,800 tokens
+
+- **New Documentation**: `.doc/90_operations/debugging_guide.md`
+  - **Purpose**: Systematic strategy debugging procedures based on real debugging experience
+  - **Content**:
+    - Problem 1: Strategy not receiving market data (detailed 6-step troubleshooting)
+    - Problem 2: IndexError when placing orders
+    - Problem 3: Strategy startup failures
+    - Problem 4: Order status anomalies
+    - Problem 5: Account connection failures
+    - Log analysis techniques
+    - Emergency reset procedures
+    - Debugging checklist
+    - Token estimate: ~6,500 tokens
+
+#### Updated
+- `.doc/10_modules/strategy_framework.md`
+  - Fixed all symbol format examples from `"btcusdt"` to `"btc_usdt"` (lines 92, 211, 227, 238, 293)
+  - Added **IMPORTANT - Symbol Format** section after subscription example (lines 217-220)
+  - Added **CRITICAL - Symbol Field** section in Configuration (lines 298-304)
+  - Emphasized format requirement with code references to `book.py` and subscription matching
+
+- `.doc/40_config/config_usage_map.md`
+  - Added entire **Strategy Configuration** section (lines 205-290)
+  - Documented `symbol` field with complete usage locations
+  - Explained why format matters (base/quote extraction, subscription matching, exchange conversion)
+  - Added troubleshooting for both IndexError and silent subscription failure
+  - Cross-referenced to symbol naming convention and debugging guide
+
+#### Fixed
+- **Critical Bug**: `strategies/demo_future/config.json` symbol format
+  - Changed from `"symbol": "btcusdt"` to `"symbol": "btc_usdt"`
+  - Required C++ rebuild to clear subscription hash cache
+  - Strategy now successfully receives depth events and places orders
+
+#### Debugging Session Highlights
+- **Issue**: demo_future strategy subscribed successfully but `on_depth()` never called
+- **Investigation**:
+  - Traced through `runner.cpp:72` → `is_subscribed()` → `get_symbol_id()` hash matching
+  - Discovered symbol hash mismatch: `hash("btcusdt") ≠ hash("btc_usdt")`
+  - MD gateway correctly published with `"btc_usdt"`, but strategy subscribed to `"btcusdt"`
+- **Resolution**:
+  - Fixed config.json symbol format
+  - Rebuilt C++ modules to clear compiled cache
+  - Strategy immediately started receiving depth events
+- **Lessons Learned**:
+  - Symbol format errors cause silent failures (no error messages)
+  - Config changes affecting hash matching require C++ rebuild
+  - Hash-based subscription filtering happens at C++ level, invisible to Python
+
+#### Code References
+- `core/python/kungfu/wingchun/book/book.py:122-123` - Base/quote extraction via `split("_")`
+- `core/cpp/wingchun/include/kungfu/wingchun/common.h:354-365` - Symbol hash generation
+- `core/cpp/wingchun/include/kungfu/wingchun/strategy/context.h:162-171` - Subscription matching
+- `core/cpp/wingchun/src/strategy/runner.cpp:68-76` - Event filtering logic
+- `core/extensions/binance/include/type_convert_binance.h:111-121` - Exchange format conversion
+- `core/extensions/binance/src/marketdata_binance.cpp:148` - Depth event publishing with original symbol
+
+#### Impact
+- **Documentation Completeness**: +2 new comprehensive guides (~12,300 tokens)
+- **Accuracy**: Fixed misleading examples in 3 existing documents
+- **Developer Experience**: Future symbol format errors will be quickly identified via docs
+- **Bug Prevention**: Explicit format requirements prevent common pitfalls
+
+---
+
+### Account Naming Convention Documentation - 2025-11-24
+
+#### Added
+- **New Documentation**: `.doc/40_config/account_naming_convention.md`
+  - **Purpose**: Clarify the dual naming system for accounts (database format vs runtime format)
+  - **Root Cause**: Users encountered `invalid account` errors due to confusion about when to use `binance_gz_user1` vs `gz_user1`
+  - **Content**:
+    - Complete flow tracing: account creation → TD gateway → strategy
+    - Database format (`account_id`): `{source}_{account}` (e.g., `binance_gz_user1`)
+    - Runtime format (`account`): pure account name (e.g., `gz_user1`)
+    - Common errors and corrections
+    - Code references: `add.py:18`, `td.py:22-23`, `trader.cpp:27`, `context.cpp:100-103`
+
+#### Updated
+- `.doc/40_config/config_usage_map.md`
+  - Added warning section: "⚠️ 重要：帳號命名機制"
+  - Explained automatic prefix addition during `kfc account add`
+  - Linked to new `account_naming_convention.md`
+
+- `.doc/90_operations/cli_operations_guide.md`
+  - Added "帳號命名邏輯" section in troubleshooting
+  - Clarified when to use pure account name vs database format
+  - Updated code references to include `td.py:22-23`
+
+### Configuration Documentation Correction - 2025-11-21
+
+#### Fixed
+- **Critical Documentation Errors**: Corrected misleading account configuration information across multiple docs
+  - **Root Cause**: Multiple documentation files incorrectly stated that account configuration is stored in JSON files at `~/.config/kungfu/app/config/td/binance/<account>.json`
+  - **Actual Implementation**: Account configuration is stored in SQLite database at `runtime/system/etc/kungfu/db/live/accounts.db` (table: `account_config`)
+  - **Correct Method**: Use CLI command `kfc account -s binance add` for interactive configuration
+
+#### Updated Files
+- `.doc/40_config/config_usage_map.md`
+  - Replaced "How to Update Configuration" section (lines 232-285)
+  - Method 1: CLI command with `kfc account -s binance add`
+  - Method 2: Python script for database queries and updates
+  - Method 3: Direct SQLite operations for advanced users
+  - Added code references: `models.py:23-28`, `add.py:15-25`, `data_proxy.py:80-82`
+
+- `.doc/90_operations/cli_operations_guide.md`
+  - Replaced "Account Config Not Found" troubleshooting section (lines 613-631)
+  - Removed incorrect JSON file creation instructions
+  - Added correct CLI and database methods
+  - Updated front-matter with account-related code references
+
+- `.doc/90_operations/pm2_startup_guide.md`
+  - Fixed "Verify account configuration" section (line 509)
+  - Replaced `cat ~/.config/kungfu/app/config/td/binance/my_account.json` with Python database query
+  - Updated troubleshooting comments (lines 471-473)
+
+- `.doc/START.md`
+  - Corrected configuration location information (lines 144-147)
+  - Changed from JSON file path to database path and CLI method
+
+#### Added
+- **Demo Future Strategy**: Complete Binance Futures trading strategy setup
+  - Created `strategies/demo_future/` directory with strategy, config, and documentation
+  - Created `scripts/demo_future/` with PM2 launch scripts (master, ledger, md, td, strategy)
+  - Full documentation in `strategies/demo_future/README.md` and `scripts/demo_future/README.md`
+  - Demonstrates Futures trading with index price subscription and order management
+
+#### Code References
+- `core/python/kungfu/data/sqlite/models.py:23-28` - Account table definition
+- `core/python/kungfu/command/account/add.py:15-25` - CLI account addition
+- `core/python/kungfu/data/sqlite/data_proxy.py:80-82` - Database write method
+- `core/extensions/binance/package.json:8-44` - Configuration schema
+
+#### Verified
+- Configuration exists only in SQLite database (no JSON files)
+- Existing account `gz_user1` has correct config: `enable_spot=false`, `enable_futures=true`
+- All documentation now reflects correct configuration storage mechanism
+
+---
+
+### Documentation Enhancements - 2025-11-19
+
+#### Added
+- **Demo Strategy: market_data_demo**
+  - Comprehensive market data subscription example (Depth, Ticker, Trade, IndexPrice)
+  - Educational reference for learning path Stage 4
+  - Located in `strategies/market_data_demo/` with full PM2 setup in `scripts/market_data_demo/`
+  - Demonstrates proper lifecycle management and statistics tracking
+
+#### Updated
+- **Binance Extension Documentation** (`.doc/10_modules/binance_extension.md`)
+  - Added "Trade Stream Design: Spot vs Futures" section
+  - Documents Spot using raw `trade` stream vs Futures using `aggTrade` (aggregated)
+  - Explains performance implications (97.5% data reduction for BTC/USDT Futures)
+  - Includes code references and strategy use case recommendations
 
 ### Binance Market Toggle Feature - 2025-11-04
 

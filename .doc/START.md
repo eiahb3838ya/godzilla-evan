@@ -1,9 +1,12 @@
 ---
 title: START (對話啟動腳本｜自動學習交易系統語境)
-updated_at: 2025-11-17
+updated_at: 2025-11-21
 owner: core-dev
 lang: zh-TW
 tags: [onboarding, context, ai-assistant, startup]
+code_refs:
+  - core/python/kungfu/data/sqlite/models.py:23-28
+  - core/python/kungfu/command/account/add.py:15-25
 purpose: "AI 助手快速載入專案語境的標準流程"
 ---
 
@@ -142,7 +145,8 @@ Depth Object:
 **預期輸出**:
 ```
 配置檔位置:
-  - Binance 閘道器: ~/.config/kungfu/app/config/td/binance/<account>.json
+  - 帳戶配置: SQLite 數據庫 runtime/system/etc/kungfu/db/live/accounts.db
+  - 配置方法: kfc account -s binance add (互動式 CLI)
   - 策略配置: 通過 -c 參數傳入 JSON
   - 環境變數: KF_HOME (預設 ~/.config/kungfu/app/runtime)
 

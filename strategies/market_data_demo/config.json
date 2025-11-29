@@ -1,0 +1,6 @@
+{
+  "name": "market_data_demo",
+  "symbol": "btc_usdt",
+  "md_source": "binance",
+  "account": "gz_user1"
+}

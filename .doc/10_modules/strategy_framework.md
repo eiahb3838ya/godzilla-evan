@@ -89,7 +89,7 @@ def pre_start(context):
     # Subscribe to market depth
     context.subscribe(
         config["md_source"],       # Data source (e.g., "binance")
-        [config["symbol"]],         # Symbols (e.g., ["btcusdt"])
+        [config["symbol"]],         # Symbols (e.g., ["btc_usdt"] - MUST use lowercase_lowercase)
         InstrumentType.Spot,        # Instrument type
         Exchange.BINANCE            # Exchange
     )
@@ -207,19 +207,24 @@ context.subscribe_all(source, instrument_type, exchange)
 **Example:**
 ```python
 context.subscribe(
-    "binance",              # Market data source
-    ["btcusdt", "ethusdt"], # Multiple symbols
-    InstrumentType.Spot,    # Spot market
-    Exchange.BINANCE        # Exchange enum
+    "binance",                      # Market data source
+    ["btc_usdt", "eth_usdt"],      # Multiple symbols (MUST use lowercase_lowercase format)
+    InstrumentType.Spot,            # Spot market
+    Exchange.BINANCE                # Exchange enum
 )
 ```
+
+**IMPORTANT - Symbol Format:**
+- ✓ Correct: `"btc_usdt"`, `"eth_usdt"` (lowercase with underscore)
+- ✗ Wrong: `"btcusdt"`, `"BTCUSDT"`, `"BTC_USDT"`, `"btc-usdt"`
+- See [Symbol Naming Convention](../40_config/symbol_naming_convention.md) for details
 
 ### Order Management
 
 ```python
 # Place order
 order_id = context.insert_order(
-    symbol,           # "btcusdt"
+    symbol,           # "btc_usdt" (MUST use lowercase_lowercase format)
     instrument_type,  # InstrumentType.Spot
     exchange,         # Exchange.BINANCE
     account,          # "my_account"
@@ -235,7 +240,7 @@ order_id = context.insert_order(
 context.cancel_order(
     account,          # "my_account"
     order_id,         # Local order ID
-    symbol,           # "btcusdt"
+    symbol,           # "btc_usdt" (same format as insert_order)
     ex_order_id,      # Exchange order ID (from on_order callback)
     instrument_type   # InstrumentType.Spot
 )
@@ -285,10 +290,18 @@ config = context.get_config()  # Now has updated values
   "md_source": "binance",
   "td_source": "binance",
   "account": "my_account",
-  "symbol": "btcusdt",
+  "symbol": "btc_usdt",
   "action": "single"
 }
 ```
+
+**CRITICAL - Symbol Field:**
+- The `"symbol"` field MUST use `lowercase_base_underscore_quote` format (e.g., `"btc_usdt"`)
+- Wrong format causes:
+  1. `IndexError` when placing orders ([book.py:122-123](../../core/python/kungfu/wingchun/book/book.py#L122-L123))
+  2. Silent subscription failure (strategy won't receive market data)
+  3. Requires C++ rebuild to fix
+- See [Symbol Naming Convention](../40_config/symbol_naming_convention.md) for detailed explanation
 
 ### State Management
 

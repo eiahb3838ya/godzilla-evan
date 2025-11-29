@@ -1,6 +1,6 @@
 ---
 title: PM2 Startup Guide
-updated_at: 2025-11-17
+updated_at: 2025-11-21
 owner: operations
 lang: en
 tags: [operations, pm2, startup, process-management, deployment]
@@ -10,8 +10,10 @@ code_refs:
   - scripts/binance_test/ledger.json:1-16
   - scripts/binance_test/md_binance.json:1-16
   - scripts/binance_test/td_binance.json:1-16
+  - core/python/kungfu/data/sqlite/models.py:23-28
+  - core/python/kungfu/command/account/add.py:15-25
 purpose: "Guide for starting and managing the trading system using PM2 process manager"
-tokens_estimate: 4500
+tokens_estimate: 4600
 ---
 
 # PM2 Startup Guide
@@ -468,9 +470,9 @@ pm2 logs <process-name> --err --lines 50
 pm2 logs <process-name> --lines 0
 
 # Common issues:
-# 1. Configuration error (check JSON syntax)
-# 2. Missing config file (check ~/.config/kungfu/app/config/)
-# 3. Exchange API key invalid (check binance.json)
+# 1. Configuration error (check database integrity)
+# 2. Missing account config (use: kfc account -s binance add)
+# 3. Exchange API key invalid (check account_config table)
 ```
 
 ### WebSocket Disconnects
@@ -504,9 +506,16 @@ pm2 logs md_binance | grep -i "disconnect\|error"
    pm2 logs td_binance | grep -i "order\|error"
    ```
 
-3. Verify account configuration:
-   ```bash
-   cat ~/.config/kungfu/app/config/td/binance/my_account.json
+3. Verify account configuration (stored in SQLite database):
+   ```python
+   import sqlite3, json
+   conn = sqlite3.connect('/home/huyifan/projects/godzilla-evan/runtime/system/etc/kungfu/db/live/accounts.db')
+   cursor = conn.cursor()
+   cursor.execute("SELECT config FROM account_config WHERE account_id = 'binance_my_account'")
+   result = cursor.fetchone()
+   if result:
+       print(json.dumps(json.loads(result[0]), indent=2))
+   conn.close()
    ```
 
 **Common issues**:

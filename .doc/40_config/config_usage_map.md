@@ -1,11 +1,17 @@
 ---
 title: Configuration Usage Map
-updated_at: 2025-11-17
+updated_at: 2025-11-24
 owner: core-dev
 lang: en
-tokens_estimate: 4500
+tokens_estimate: 5200
 layer: 40_config
-tags: [config, reference, binance, api-keys, mapping]
+tags: [config, reference, binance, api-keys, mapping, cli, database, account-naming]
+code_refs:
+  - core/python/kungfu/command/account/add.py:15-25
+  - core/python/kungfu/command/td.py:22-23
+  - core/python/kungfu/data/sqlite/models.py:23-28
+  - core/python/kungfu/data/sqlite/data_proxy.py:80-82
+  - core/extensions/binance/package.json:8-44
 purpose: "Maps all configuration keys to code locations and documents their usage"
 ---
 
@@ -194,6 +200,97 @@ Binance extension configuration is stored in the account database and consumed b
 - [Binance Configuration Contract](../30_contracts/binance_config_contract.md) - Complete endpoint specification
 - [TESTNET.md](../00_index/TESTNET.md) - Testnet setup and endpoint documentation
 
+---
+
+## Strategy Configuration
+
+### Overview
+
+Strategy configuration is stored in JSON files within each strategy directory and loaded by the strategy runtime.
+
+**Location**: `strategies/<strategy_name>/config.json`
+
+**Loading**: [core/python/kungfu/wingchun/strategy.py:153-158](../../core/python/kungfu/wingchun/strategy.py#L153-L158)
+
+### Configuration Keys
+
+#### `symbol` (required)
+
+- **Type**: string
+- **Purpose**: Trading pair symbol for market data subscription and order placement
+- **Format**: `lowercase_base_underscore_quote` (e.g., `"btc_usdt"`, `"eth_usdt"`)
+- **Usage Locations**:
+  - Market data subscription: [core/cpp/wingchun/src/strategy/context.cpp:264-271](../../core/cpp/wingchun/src/strategy/context.cpp#L264-L271)
+  - Subscription matching: [core/cpp/wingchun/src/strategy/runner.cpp:72](../../core/cpp/wingchun/src/strategy/runner.cpp#L72)
+  - Symbol hash generation: [core/cpp/wingchun/include/kungfu/wingchun/common.h:354-365](../../core/cpp/wingchun/include/kungfu/wingchun/common.h#L354-L365)
+  - Base/quote extraction: [core/python/kungfu/wingchun/book/book.py:122-123](../../core/python/kungfu/wingchun/book/book.py#L122-L123)
+
+**CRITICAL - Format Requirements**:
+
+✓ **Correct Format**: `"btc_usdt"`, `"eth_usdt"`, `"sol_usdt"`
+- Lowercase letters only
+- Base and quote coins separated by single underscore
+
+✗ **Wrong Formats**:
+- `"btcusdt"` (no separator) → **IndexError** when placing orders
+- `"BTCUSDT"` (uppercase) → **subscription mismatch**
+- `"BTC_USDT"` (uppercase with underscore) → **subscription mismatch**
+- `"btc-usdt"` (hyphen) → **IndexError**
+
+**Why Format Matters**:
+
+1. **Base/Quote Coin Extraction** ([book.py:122-123](../../core/python/kungfu/wingchun/book/book.py#L122-L123)):
+   ```python
+   splited = input.symbol.split("_")
+   base_coin = splited[0]   # "btc_usdt" → "btc"
+   quote_coin = splited[1]  # "btcusdt" → IndexError!
+   ```
+
+2. **Subscription Matching** ([common.h:354-365](../../core/cpp/wingchun/include/kungfu/wingchun/common.h#L354-L365)):
+   ```cpp
+   // Symbol string is hashed directly
+   symbol_id = hash_str_32(symbol) ^ hash_str_32(sub_type) ^ ...
+   // "btc_usdt" hash ≠ "btcusdt" hash → subscription fails silently
+   ```
+
+3. **Exchange Format Conversion** ([type_convert_binance.h:111-121](../../core/extensions/binance/include/type_convert_binance.h#L111-L121)):
+   ```cpp
+   // MD gateway converts internal → exchange format
+   to_binance_symbol("btc_usdt") → "BTCUSDT" (for WebSocket)
+   // Then publishes back with original format "btc_usdt"
+   ```
+
+**Example Configuration**:
+```json
+{
+  "name": "demo_future",
+  "md_source": "binance",
+  "td_source": "binance",
+  "symbol": "btc_usdt",
+  "account": "gz_user1"
+}
+```
+
+**Troubleshooting**:
+
+If you see either of these errors, check symbol format:
+
+1. **IndexError: list index out of range** at `book.py:123`
+   - Fix: Change symbol to `"btc_usdt"` format
+   - Requires C++ rebuild after fixing
+
+2. **Strategy not receiving market data** (silent failure)
+   - Symptom: `subscribe` succeeds but `on_depth()` never called
+   - Fix: Check symbol format and rebuild C++
+   - See [Debugging Guide](../90_operations/debugging_guide.md#問題-1-策略無法接收市場數據)
+
+**See Also**:
+- [Symbol Naming Convention](symbol_naming_convention.md) - Complete symbol format specification
+- [Strategy Framework](../10_modules/strategy_framework.md) - Strategy configuration usage
+- [Debugging Guide](../90_operations/debugging_guide.md) - Troubleshooting symbol format issues
+
+---
+
 ## Configuration Storage
 
 ### Database Schema
@@ -229,39 +326,93 @@ void from_json(const nlohmann::json& j, BinanceConfig& c) {
 
 ## How to Update Configuration
 
-### Method 1: SQLite Direct Update (Recommended for Testing)
+### Method 1: CLI Command (Recommended for Initial Setup)
 
+**Source**: [core/python/kungfu/command/account/add.py:15-25](../../core/python/kungfu/command/account/add.py)
+
+**Command**:
 ```bash
-# Enter the container
-docker-compose exec app /bin/bash
-
-# Update config
-sqlite3 /app/runtime/db/account.db \
-  "UPDATE account_config
-   SET config = json_set(config, '$.enable_spot', json('false'))
-   WHERE user_id = 'gz_user1';"
+kfc account -s binance add
 ```
 
-**Verify**:
-```bash
-sqlite3 /app/runtime/db/account.db \
-  "SELECT config FROM account_config WHERE user_id = 'gz_user1';"
+**Interactive Prompts** (based on [package.json:8-44](../../core/extensions/binance/package.json)):
+```
+请填写账户 user_id: gz_user1
+请填写access_key: [hidden input]
+请填写 secret_key: [hidden input]
+是否启用现货市场登录？(true/false) [default: true]: false
+是否启用期货市场登录？(true/false) [default: true]: true
 ```
 
-**Important**: Changes require restarting the trader process to take effect.
+**Result**:
+- Account ID generated: `binance_gz_user1`
+- Configuration stored in `accounts.db` table `account_config`
 
-### Method 2: Python Script Update
+**Code Reference**:
+```python
+# core/python/kungfu/command/account/add.py:18-25
+account_id = ctx.source + '_' + answers[ctx.schema['key']]  # "binance_gz_user1"
+if find_account(ctx, account_id):
+    click.echo('Duplicate account')
+else:
+    ctx.db.add_account(
+        account_id=account_id,
+        source_name=ctx.source,
+        receive_md=receive_md,
+        config=answers
+    )
+```
 
+**⚠️ 重要：帳號命名機制**
+
+系統使用兩套帳號名稱格式：
+- **資料庫格式** (`account_id`)：`{source}_{account}` (如 `binance_gz_user1`)
+- **運行時格式** (`account`)：純帳號名稱 (如 `gz_user1`)
+
+當你輸入 `gz_user1` 時，系統會自動加上 `binance_` 前綴存入資料庫。但在以下場景中，你**必須使用純帳號名稱**（`gz_user1`）：
+- TD gateway 啟動參數：`-a gz_user1`
+- 策略配置檔 `config.json`：`"account": "gz_user1"`
+- 策略代碼：`context.add_account("binance", "gz_user1")`
+
+詳細說明請參閱 [帳號命名機制](account_naming_convention.md)。
+
+### Method 2: Python Script Update (For Modifying Existing Accounts)
+
+**Database Path**:
+```
+$KF_HOME/runtime/system/etc/kungfu/db/live/accounts.db
+```
+
+**View Configuration**:
 ```python
 import sqlite3
 import json
 
 # Connect to database
-conn = sqlite3.connect('/app/runtime/db/account.db')
+db_path = '/home/huyifan/projects/godzilla-evan/runtime/system/etc/kungfu/db/live/accounts.db'
+conn = sqlite3.connect(db_path)
+cursor = conn.cursor()
+
+# Query account config
+cursor.execute("SELECT config FROM account_config WHERE account_id = 'binance_gz_user1'")
+config_json = cursor.fetchone()[0]
+config = json.loads(config_json)
+
+print(json.dumps(config, indent=2))
+conn.close()
+```
+
+**Update Configuration**:
+```python
+import sqlite3
+import json
+
+db_path = '/home/huyifan/projects/godzilla-evan/runtime/system/etc/kungfu/db/live/accounts.db'
+conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 
 # Read current config
-cursor.execute("SELECT config FROM account_config WHERE user_id = 'gz_user1'")
+cursor.execute("SELECT config FROM account_config WHERE account_id = 'binance_gz_user1'")
 config_json = cursor.fetchone()[0]
 config = json.loads(config_json)
 
@@ -271,18 +422,34 @@ config['enable_futures'] = True
 
 # Write back
 cursor.execute(
-    "UPDATE account_config SET config = ? WHERE user_id = 'gz_user1'",
+    "UPDATE account_config SET config = ? WHERE account_id = 'binance_gz_user1'",
     (json.dumps(config),)
 )
 conn.commit()
 conn.close()
 ```
 
-### Method 3: Initial Setup via kungfu CLI
+**Important**: Changes require restarting the trader process to take effect:
+```bash
+pm2 restart td_binance:gz_user1
+```
+
+### Method 3: SQLite Direct Update (Advanced)
+
+**For systems with sqlite3 CLI available**:
 
 ```bash
-# Not yet documented - configuration is typically done through kungfu UI
-# or by directly editing the database as shown above
+# Update config
+sqlite3 /home/huyifan/projects/godzilla-evan/runtime/system/etc/kungfu/db/live/accounts.db \
+  "UPDATE account_config
+   SET config = json_set(config, '$.enable_spot', json('false'))
+   WHERE account_id = 'binance_gz_user1';"
+```
+
+**Verify**:
+```bash
+sqlite3 /home/huyifan/projects/godzilla-evan/runtime/system/etc/kungfu/db/live/accounts.db \
+  "SELECT config FROM account_config WHERE account_id = 'binance_gz_user1';"
 ```
 
 ## Configuration Flow

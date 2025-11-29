@@ -1,17 +1,20 @@
 ---
 title: CLI Operations Guide
-updated_at: 2025-11-17
+updated_at: 2025-11-24
 owner: operations
 lang: en
-tags: [operations, cli, commands, dev_run, kungfu]
+tags: [operations, cli, commands, dev_run, kungfu, account-naming]
 code_refs:
   - core/python/kungfu/command/master.py:1-21
   - core/python/kungfu/command/md.py:1-29
   - core/python/kungfu/command/td.py:1-35
   - core/python/kungfu/command/strategy.py:1-110
   - core/python/kungfu/command/ledger.py:1-25
+  - core/python/kungfu/command/account/add.py:15-25
+  - core/python/kungfu/data/sqlite/models.py:23-28
+  - core/python/kungfu/data/sqlite/data_proxy.py:80-82
 purpose: "Reference guide for command-line tools to run and manage trading system services"
-tokens_estimate: 4300
+tokens_estimate: 5000
 ---
 
 # CLI Operations Guide
@@ -614,20 +617,82 @@ export PYTHONPATH=/path/to/core/python:$PYTHONPATH
 
 **Symptom**:
 ```
-ERROR: Account config not found: td/binance/my_account.json
+ERROR: Account config not found for account: my_account
 ```
 
-**Solution**:
+**Root Cause**: Account configuration is stored in SQLite database, not JSON files.
+
+**Database Location**: `runtime/system/etc/kungfu/db/live/accounts.db`
+
+**Solution Method 1 - CLI Command (Recommended)**:
 ```bash
-# Create config file
-mkdir -p ~/.config/kungfu/app/runtime/config/td/binance
-cat > ~/.config/kungfu/app/runtime/config/td/binance/my_account.json <<EOF
-{
-  "user_id": "my_account",
-  "access_key": "YOUR_KEY",
-  "secret_key": "YOUR_SECRET"
+# Add account using interactive CLI
+kfc account -s binance add
+
+# Follow prompts to enter:
+# - user_id: my_account
+# - access_key: YOUR_BINANCE_API_KEY
+# - secret_key: YOUR_BINANCE_SECRET_KEY
+# - enable_spot: true/false
+# - enable_futures: true/false
+```
+
+**⚠️ 重要：帳號命名邏輯**
+
+當你輸入 `user_id: my_account` 時，系統會自動加上 `{source}_` 前綴：
+- 資料庫中的 `account_id`：`binance_my_account`
+- TD gateway 參數：`-a my_account`（使用**純帳號名稱**）
+- 策略配置：`"account": "my_account"`（使用**純帳號名稱**）
+
+**內部邏輯** ([add.py:18](../../core/python/kungfu/command/account/add.py#L18))：
+```python
+account_id = ctx.source + '_' + answers[ctx.schema['key']]  # "binance_my_account"
+```
+
+詳細說明請參閱 [帳號命名機制](../40_config/account_naming_convention.md)。
+
+**Solution Method 2 - Python Script**:
+```python
+import sqlite3
+import json
+
+db_path = '/home/huyifan/projects/godzilla-evan/runtime/system/etc/kungfu/db/live/accounts.db'
+conn = sqlite3.connect(db_path)
+cursor = conn.cursor()
+
+config = {
+    'user_id': 'my_account',
+    'access_key': 'YOUR_BINANCE_API_KEY',
+    'secret_key': 'YOUR_BINANCE_SECRET_KEY',
+    'enable_spot': True,
+    'enable_futures': False
 }
-EOF
+
+cursor.execute(
+    "INSERT OR REPLACE INTO account_config (account_id, source_name, receive_md, config) VALUES (?, ?, ?, ?)",
+    ('binance_my_account', 'binance', 1, json.dumps(config))
+)
+conn.commit()
+conn.close()
+```
+
+**Verify Configuration**:
+```python
+import sqlite3
+import json
+
+db_path = '/home/huyifan/projects/godzilla-evan/runtime/system/etc/kungfu/db/live/accounts.db'
+conn = sqlite3.connect(db_path)
+cursor = conn.cursor()
+
+cursor.execute("SELECT config FROM account_config WHERE account_id = 'binance_my_account'")
+result = cursor.fetchone()
+if result:
+    print(json.dumps(json.loads(result[0]), indent=2))
+else:
+    print("Account not found")
+
+conn.close()
 ```
 
 ### Strategy File Not Found

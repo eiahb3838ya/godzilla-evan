@@ -23,11 +23,9 @@ def pre_start(context):
     context.set_account_cash_limit(config["td_source"], exchange, config["account"], config["quote_coin"],
                                    config["quote_limit"])
 
-    # context.subscribe(config["md_source2"], [config["symbol"]], instrument_type, Exchange.BINANCE)
-    # context.subscribe(config["md_source"], [config["symbol"]], InstrumentType.FFuture, exchange)
-    #context.subscribe_trade(config["md_source"], [config["symbol"]], instrument_type, Exchange.BINANCE)
-    # context.subscribe_ticker(config["md_source2"], [config["symbol"]], instrument_type, Exchange.BINANCE)
-    context.subscribe_index_price(config["md_source"], [config["symbol"]], instrument_type, exchange)
+    # 訂閱期貨市場深度數據（Depth）
+    # index_price 目前 Binance 擴展未實作，改用 subscribe
+    context.subscribe(config["md_source"], [config["symbol"]], instrument_type, exchange)
 
 
 def on_depth(context, depth):
@@ -36,7 +34,6 @@ def on_depth(context, depth):
     if depth.symbol != config['symbol']:
          context.log().info(f"not subscribed symbol: {depth.symbol}, {config}")
          return
-    context.log().info(depth)
     book = context.get_account_book(config["td_source"], config["account"])
     context.log().info(f"active orders: {len(book.active_orders)}")
     if len(book.active_orders) <= 0:
