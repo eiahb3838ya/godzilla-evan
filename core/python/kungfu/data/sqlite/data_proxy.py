@@ -28,7 +28,8 @@ class SessionFactoryHolder:
             self.engine = create_engine(f"sqlite:///{filename}")
         else:
             self.engine = create_engine(make_url(location, filename))
-        self.engine = self.engine.execution_options(isolation_level="AUTOCOMMIT")
+        # SQLite defaults to autocommit mode, no need to set isolation_level
+        # self.engine = self.engine.execution_options(isolation_level="AUTOCOMMIT")
         self.session_factory = sessionmaker(bind=self.engine)
 
 
@@ -57,7 +58,9 @@ class AccountsDB(SessionFactoryHolder):
                 filter(Account.source_name == source_name). \
                 filter(Account.account_id == account_id).first()
             if account:
-                return json.dumps(object_as_dict(account)['config'])
+                config_value = account.config
+                result = json.dumps(config_value)
+                return result
             else:
                 return ""
 

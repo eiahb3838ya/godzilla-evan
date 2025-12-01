@@ -1,0 +1,43 @@
+# Python caches and build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+
+# C/C++/CMake build outputs
+build/
+core/**/build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+
+# Runtime data and logs
+runtime/
+*.journal
+*.nn
+*.log
+
+# Compiled Python extension binaries (local builds)
+core/python/*.so
+core/python/lib*.so
+core/python/pywingchun*.so
+core/python/pyyjj*.so
+
+# Temporary/local files
+GIT_COMMIT_MESSAGE.txt
+
+# Generated or synced extension copies (do not commit runtime syncs)
+core/python/extensions/binance/
+
+# Editors and OS files
+.DS_Store
+.vscode/
+*.swp
+

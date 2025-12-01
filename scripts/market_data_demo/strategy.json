@@ -1,0 +1,17 @@
+{
+  "apps": [
+    {
+      "name": "strategy:market_data_demo",
+      "cwd": "../../",
+      "script": "core/python/dev_run.py",
+      "exec_interpreter": "python3",
+      "args": "-l info strategy -n market_data_demo -p strategies/market_data_demo/market_data_demo.py -c strategies/market_data_demo/config.json",
+      "watch": false,
+      "autorestart": true,
+      "max_restarts": 10,
+      "env": {
+        "KF_HOME": "/app/runtime"
+      }
+    }
+  ]
+}

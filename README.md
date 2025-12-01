@@ -1,85 +1,99 @@
 # Godzilla-Evan
 
-A low-latency automated crypto trading framework based on kungfu.
+Low-latency cryptocurrency trading framework with event-sourced architecture.
 
-## What is This?
+## Features
 
-This project is a modified fork of the kungfu trading framework, customized for godzilla.dev's use case.
-
-**Core Components**:
-- **yijinjing** (易筋經): Journal-based event system for high-frequency trading
-- **wingchun** (詠春): Trading gateway abstraction with order management
-- **C++/Python**: Low-latency C++ core with Python bindings
-
-**License**: Apache 2.0 (maintained from upstream)
-
-For project origin and fork details, see [.doc/ORIGIN.md](.doc/ORIGIN.md)
+- **Sub-millisecond latency**: C++ core with journal-based event system
+- **Multi-exchange**: Binance (spot/futures), extensible to other exchanges
+- **Python strategies**: Write trading logic in Python with full C++ performance
+- **Event sourcing**: Complete audit trail with time-travel debugging
+- **Production-ready**: Docker deployment, PM2 process management
 
 ## Quick Start
 
-Three steps to start development:
-
 ```bash
-# 1. Navigate to project
-cd /home/huyifan/projects/godzilla-evan
-
-# 2. Start container
+# Clone and start
+git clone <your-repo>
+cd godzilla-evan
 docker-compose up -d
 
-# 3. Enter dev environment
+# Enter dev environment
 docker-compose exec app /bin/bash
-```
 
-For detailed setup instructions, see [.doc/INSTALL.md](.doc/INSTALL.md)
+# Run a strategy
+python3 core/python/dev_run.py -l info strategy \
+  -n demo_spot \
+  -p strategies/demo_spot.py
+```
 
 ## Documentation
 
-Complete documentation is in the `.doc/` directory:
+All documentation is in [`.doc/`](.doc/):
 
-- **[.doc/INDEX.md](.doc/INDEX.md)** - Documentation index
-- **[.doc/INSTALL.md](.doc/INSTALL.md)** - Environment setup guide
-- **[.doc/HACKING.md](.doc/HACKING.md)** - Development workflow
-- **[.doc/ARCHITECTURE.md](.doc/ARCHITECTURE.md)** - System architecture
+- **[START.md](.doc/START.md)** - AI assistant onboarding
+- **[DESIGN.md](.doc/00_index/DESIGN.md)** - System architecture
+- **[Strategy Guide](.doc/10_modules/strategy_framework.md)** - Write trading strategies
+- **[API Reference](.doc/30_contracts/strategy_context_api.md)** - Complete API docs
+- **[Operations](.doc/90_operations/pm2_startup_guide.md)** - Deployment & operations
+
+**For AI assistants**: Run `follow .doc/START.md` to load project context.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────┐
+│  Python Strategy Layer                  │
+│  (User trading logic)                   │
+└──────────────┬──────────────────────────┘
+               │ pybind11
+┌──────────────▼──────────────────────────┐
+│  Wingchun (C++)                         │
+│  • Strategy runtime                     │
+│  • Order management                     │
+│  • Position tracking                    │
+└──────────────┬──────────────────────────┘
+               │
+┌──────────────▼──────────────────────────┐
+│  Yijinjing (C++)                        │
+│  • Event sourcing (Journal)             │
+│  • Message passing (~50μs)              │
+└──────────────┬──────────────────────────┘
+               │
+┌──────────────▼──────────────────────────┐
+│  Exchange Gateways                      │
+│  • Binance REST/WebSocket               │
+│  • Order routing                        │
+└─────────────────────────────────────────┘
+```
 
 ## Project Structure
 
 ```
-godzilla-evan/
-├── core/                # Core code (C++/Python)
-│   ├── cpp/
-│   │   ├── yijinjing/  # Event system
-│   │   └── wingchun/   # Trading gateway
-│   └── python/
-├── strategies/          # Trading strategies
-├── .doc/               # Documentation
-└── docker-compose.yml  # Dev environment
+.
+├── core/
+│   ├── cpp/              # C++ core (yijinjing, wingchun)
+│   ├── python/           # Python bindings
+│   └── extensions/       # Exchange connectors
+├── strategies/           # Trading strategies
+├── .doc/                 # Documentation
+│   ├── 10_modules/       # Module guides
+│   ├── 30_contracts/     # API contracts
+│   └── 90_operations/    # Operations guides
+└── docker-compose.yml
 ```
 
 ## Development
 
-Edit code on host (Windows/Mac), build in container:
-
-```bash
-# In container
-cd /app/core/build
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make -j$(nproc)
-```
-
-See [.doc/HACKING.md](.doc/HACKING.md) for development workflow.
-
-## Deployment
-
-Same Docker configuration works on any Linux server:
-
-```bash
-git clone <your-repo>
-cd godzilla-evan
-docker-compose up -d
-```
-
-Zero modifications needed.
+See [.doc/00_index/HACKING.md](.doc/00_index/HACKING.md) for:
+- Build instructions
+- Development workflow
+- Testing strategies
 
 ## License
 
-Apache 2.0 - See [LICENSE](LICENSE) for details
+Apache 2.0
+
+## Credits
+
+Modified fork of [kungfu](https://github.com/kungfu-trader/kungfu) by Keren Dong.

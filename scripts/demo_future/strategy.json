@@ -1,0 +1,17 @@
+{
+  "apps": [
+    {
+      "name": "strategy:demo_future",
+      "cwd": "../../",
+      "script": "core/python/dev_run.py",
+      "exec_interpreter": "python3",
+      "args": "-l info strategy -n demo_future -p strategies/demo_future/demo_future.py -c strategies/demo_future/config.json",
+      "watch": false,
+      "autorestart": true,
+      "max_restarts": 10,
+      "env": {
+        "KF_HOME": "/app/runtime"
+      }
+    }
+  ]
+}
