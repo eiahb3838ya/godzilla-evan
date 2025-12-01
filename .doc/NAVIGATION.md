@@ -30,8 +30,8 @@
 ### 🐛 除錯 Binance 問題
 **閱讀順序**:
 1. `modules/binance_extension.md` - REST/WebSocket 實作細節
-2. `config/config_usage_map.md` - 配置檔檢查清單
-3. `config/dangerous_keys.md` - API 金鑰安全指南
+2. `config/CONFIG_REFERENCE.md` - 配置檔檢查清單與安全指南
+3. `config/NAMING_CONVENTIONS.md` - 帳號與交易對命名規範
 4. `archive/TESTNET.md` - 測試網設定與驗證
 
 **Token 預算**: ~22k
@@ -88,7 +88,7 @@
 | **Journal** | modules/yijinjing.md | modules/event_flow.md |
 | **Context API** | contracts/strategy_context_api.md | modules/strategy_framework.md#callbacks |
 | **PM2** | operations/pm2_startup_guide.md | operations/QUICK_START.md |
-| **配置** | config/config_usage_map.md | config/dangerous_keys.md, config/account_naming_convention.md |
+| **配置** | config/CONFIG_REFERENCE.md | config/NAMING_CONVENTIONS.md |
 | **Binance** | modules/binance_extension.md | contracts/binance_config_contract.md, adr/004-binance-market-toggle.md |
 | **除錯案例** | operations/debugging_case_studies.md | operations/debugging_guide.md |
 | **策略生命週期** | modules/strategy_framework.md | modules/strategy_lifecycle_flow.md |
@@ -138,7 +138,8 @@
 | **contracts/depth_object_contract.md** | ✅ 已驗證 | 2025-11-17 | msg.h:242-302 | 陷阱說明清楚 |
 | **modules/strategy_framework.md** | ⚠️ 待驗證 | 2025-10-15 | strategy.py:35-184 | 可能有新 API |
 | **modules/yijinjing.md** | ✅ 已驗證 | 2025-11-10 | - | 核心機制穩定 |
-| **config/config_usage_map.md** | ✅ 已驗證 | 2025-11-15 | - | 配置路徑正確 |
+| **config/CONFIG_REFERENCE.md** | ✅ 已驗證 | 2025-12-01 | - | 統一配置參考 |
+| **config/NAMING_CONVENTIONS.md** | ✅ 已驗證 | 2025-12-01 | - | 命名規範統一 |
 | **archive/TESTNET.md** | ✅ 已驗證 | 2025-11-20 | - | 測試網流程完整 |
 
 **圖例**:
@@ -198,7 +199,8 @@
    - 更新範例程式 `strategies/demo_*.py`
 
 3. **配置格式變更**:
-   - 更新 `config/config_usage_map.md`
+   - 更新 `config/CONFIG_REFERENCE.md`
+   - 更新 `config/NAMING_CONVENTIONS.md` (若影響命名)
    - 更新 `contracts/binance_config_contract.md` (若影響 Binance)
    - 更新 `config/examples/` 的範例檔
 

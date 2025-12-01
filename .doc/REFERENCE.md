@@ -37,11 +37,9 @@
 │   ├── debugging_guide.md     # 除錯診斷流程
 │   └── DEBUGGING.md           # 除錯完整手冊 (詳細版)
 │
-├── config/           # 配置說明 (4 個文檔)
-│   ├── config_usage_map.md         # 配置檔使用地圖
-│   ├── dangerous_keys.md           # 密鑰安全指南
-│   ├── account_naming_convention.md # 帳戶命名規範
-│   └── symbol_naming_convention.md  # 交易對命名規範
+├── config/           # 配置說明 (2 個文檔)
+│   ├── CONFIG_REFERENCE.md         # 配置檔完整參考 (含安全指南)
+│   └── NAMING_CONVENTIONS.md       # 命名規範 (帳戶+交易對)
 │
 ├── adr/              # 架構決策記錄 (4 個文檔)
 │   ├── 001-docker.md              # Docker 容器化決策
@@ -125,7 +123,7 @@ context.get_object(key)
 | 我想... | 主要文檔 | 補充文檔 |
 |--------|---------|---------|
 | **開發新策略** | modules/strategy_framework.md | contracts/strategy_context_api.md |
-| **除錯 Binance** | modules/binance_extension.md | config/config_usage_map.md, archive/TESTNET.md |
+| **除錯 Binance** | modules/binance_extension.md | config/CONFIG_REFERENCE.md, archive/TESTNET.md |
 | **理解架構** | modules/yijinjing.md, modules/wingchun.md | modules/event_flow.md |
 | **服務部署** | operations/QUICK_START.md | operations/pm2_startup_guide.md |
 | **新增交易所** | modules/wingchun.md | modules/binance_extension.md (參考實作) |
@@ -143,7 +141,7 @@ context.get_object(key)
 | Journal | modules/yijinjing.md |
 | Context API | contracts/strategy_context_api.md |
 | PM2 | operations/pm2_startup_guide.md, operations/QUICK_START.md |
-| 配置 | config/config_usage_map.md |
+| 配置 | config/CONFIG_REFERENCE.md |
 | Binance | modules/binance_extension.md |
 
 **完整索引**: 見 [NAVIGATION.md#關鍵字快速查找](NAVIGATION.md#二關鍵字快速查找)
@@ -170,7 +168,7 @@ context.get_object(key)
 | **API** (context.cpp) | contracts/strategy_context_api.md |
 | **生命週期** (runner.cpp) | modules/strategy_framework.md, modules/strategy_lifecycle_flow.md |
 | **Python 綁定** (pybind_wingchun.cpp) | modules/python_bindings.md |
-| **配置** | config/config_usage_map.md, contracts/binance_config_contract.md |
+| **配置** | config/CONFIG_REFERENCE.md, config/NAMING_CONVENTIONS.md, contracts/binance_config_contract.md |
 | **架構決策** | 新增 adr/00X-decision-name.md |
 
 **驗證工具**:

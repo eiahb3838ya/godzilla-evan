@@ -69,7 +69,7 @@ struct Configuration {
 - **Rotate regularly** (especially after suspected compromise)
 - **Use testnet keys for development/testing**
 
-See [Dangerous Configuration Keys](../40_config/dangerous_keys.md#binance-credentials) for detailed security practices.
+See [Dangerous Configuration Keys](../40_config/CONFIG_REFERENCE.md#part-2-security-guidelines#binance-credentials) for detailed security practices.
 
 ### Market Toggle Flags (OPTIONAL - ADR-004)
 
@@ -292,8 +292,8 @@ c.ubase_wss_host = "fstream.binance.com";       // was stream.binancefuture.com
 ## Related Documentation
 
 ### Configuration
-- [Config Usage Map](../40_config/config_usage_map.md) - Maps all config keys to code
-- [Dangerous Configuration Keys](../40_config/dangerous_keys.md) - Security deep dive
+- [Config Usage Map](../40_config/CONFIG_REFERENCE.md) - Maps all config keys to code
+- [Dangerous Configuration Keys](../40_config/CONFIG_REFERENCE.md#part-2-security-guidelines) - Security deep dive
 
 ### Deployment
 - [TESTNET.md](../00_index/TESTNET.md) - Complete testnet setup guide

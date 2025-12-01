@@ -123,8 +123,8 @@ def on_order(self, context, order):
 
 | 配置類型 | 路徑 | 格式 | 範例 | 相關文檔 |
 |---------|------|------|------|---------|
-| **MD 配置** | `~/.config/kungfu/app/runtime/config/md/<source>/config.json` | JSON | `{"url": "ws://...", "timeout": 5000}` | config/config_usage_map.md |
-| **TD 配置** | `~/.config/kungfu/app/runtime/config/td/<source>/<account>.json` | JSON | `{"access_key": "...", "secret_key": "..."}` | config/dangerous_keys.md |
+| **MD 配置** | `~/.config/kungfu/app/runtime/config/md/<source>/config.json` | JSON | `{"url": "ws://...", "timeout": 5000}` | config/CONFIG_REFERENCE.md |
+| **TD 配置** | `~/.config/kungfu/app/runtime/config/td/<source>/<account>.json` | JSON | `{"access_key": "...", "secret_key": "..."}` | config/CONFIG_REFERENCE.md#part-2-security-guidelines |
 | **策略配置** | `strategies/<name>/config.json` | JSON | `{"threshold": 100, "volume": 1.0}` | modules/strategy_framework.md#config |
 
 **危險配置項** (絕不提交到 Git):
@@ -180,7 +180,7 @@ python3 .doc/operations/scripts/estimate_tokens.py
 | **Context API 如何下單** | context.cpp:350-410 |
 | **Python 如何存取 Order** | pybind_wingchun.cpp:516-547 |
 | **Binance 配置格式** | binance/include/common.h:18-71 |
-| **配置檔存放位置** | config/config_usage_map.md |
+| **配置檔存放位置** | config/CONFIG_REFERENCE.md |
 
 ### 修改程式碼後要更新哪些文檔?
 
@@ -190,7 +190,7 @@ python3 .doc/operations/scripts/estimate_tokens.py
 | **context.cpp API** | contracts/strategy_context_api.md |
 | **runner.cpp 生命週期** | modules/strategy_framework.md + modules/strategy_lifecycle_flow.md |
 | **pybind 綁定** | modules/python_bindings.md |
-| **binance 配置** | contracts/binance_config_contract.md + config/config_usage_map.md |
+| **binance 配置** | contracts/binance_config_contract.md + config/CONFIG_REFERENCE.md |
 
 ---
 

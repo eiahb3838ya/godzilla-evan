@@ -13,7 +13,7 @@
 **步驟**:
 1. **環境準備** - 閱讀 [TESTNET.md](TESTNET.md#環境準備) 完成 Docker 安裝
 2. **獲取 API Keys** - 閱讀 [TESTNET.md](TESTNET.md#獲取-api-keys) 申請測試網金鑰
-3. **配置帳戶** - 閱讀 [config/config_usage_map.md](../config/config_usage_map.md) 設定 TD 配置
+3. **配置帳戶** - 閱讀 [config/CONFIG_REFERENCE.md](../config/CONFIG_REFERENCE.md) 設定 TD 配置
 4. **啟動服務** - 執行 [QUICK_START.md](../operations/QUICK_START.md#啟動所有服務)
 5. **驗證運行** - 確認 `docker exec godzilla-dev pm2 list` 顯示所有服務 online
 
@@ -149,7 +149,7 @@ docker exec -it godzilla-dev pm2 logs my_first_strategy
 | **理解訂單流程** | [order_lifecycle_flow.md](../modules/order_lifecycle_flow.md) → [order_object_contract.md](../contracts/order_object_contract.md) | 1小時 |
 | **除錯策略問題** | [debugging_guide.md](../operations/debugging_guide.md) | 30分鐘 |
 | **理解整體架構** | [yijinjing.md](../modules/yijinjing.md) → [wingchun.md](../modules/wingchun.md) → [event_flow.md](../modules/event_flow.md) | 3小時 |
-| **配置管理** | [config_usage_map.md](../config/config_usage_map.md) → [dangerous_keys.md](../config/dangerous_keys.md) | 30分鐘 |
+| **配置管理** | [CONFIG_REFERENCE.md](../config/CONFIG_REFERENCE.md) → [CONFIG_REFERENCE.md#part-2-security-guidelines](../config/CONFIG_REFERENCE.md#part-2-security-guidelines) | 30分鐘 |
 | **新增交易所** | [wingchun.md](../modules/wingchun.md) → [binance_extension.md](../modules/binance_extension.md) | 6小時 |
 
 ---
@@ -161,7 +161,7 @@ docker exec -it godzilla-dev pm2 logs my_first_strategy
 **排查步驟**: [debugging_guide.md - 問題1](../operations/debugging_guide.md#問題-1-策略無法接收市場數據)
 
 **常見原因**:
-1. Symbol 格式錯誤 → 參考 [symbol_naming_convention.md](../config/symbol_naming_convention.md)
+1. Symbol 格式錯誤 → 參考 [NAMING_CONVENTIONS.md#二交易對命名規範](../config/NAMING_CONVENTIONS.md#二交易對命名規範)
 2. MD Gateway 未啟動 → 執行 `docker exec godzilla-dev pm2 list`
 3. 訂閱參數錯誤 → 檢查 `InstrumentType` 和 `Exchange` 是否正確
 

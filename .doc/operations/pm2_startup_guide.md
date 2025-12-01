@@ -633,7 +633,7 @@ CMD ["pm2-runtime", "start", "master.json", "ledger.json", "md_binance.json", "t
 ## Related Documentation
 
 ### Configuration
-- [Config Usage Map](../40_config/config_usage_map.md) - Configuration file locations
+- [Config Usage Map](../40_config/CONFIG_REFERENCE.md) - Configuration file locations
 - [Binance Config Contract](../30_contracts/binance_config_contract.md) - Exchange configuration
 
 ### Debugging

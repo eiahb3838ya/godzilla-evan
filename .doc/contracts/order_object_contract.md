@@ -300,7 +300,7 @@ on_order(order):
 - [Order Lifecycle Flow](../20_interactions/order_lifecycle_flow.md) - State transitions in detail
 
 ### Configuration
-- [Config Usage Map](../40_config/config_usage_map.md) - Account and exchange configuration
+- [Config Usage Map](../40_config/CONFIG_REFERENCE.md) - Account and exchange configuration
 
 ## Implementation Notes
 

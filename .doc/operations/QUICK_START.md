@@ -418,4 +418,4 @@ docker exec godzilla-dev pm2 restart all
 - 詳細操作指南: [operations/pm2_startup_guide.md](pm2_startup_guide.md)
 - CLI 工具說明: [operations/cli_operations_guide.md](cli_operations_guide.md)
 - 除錯流程: [operations/debugging_guide.md](debugging_guide.md)
-- 配置管理: [config/config_usage_map.md](../config/config_usage_map.md)
+- 配置管理: [config/CONFIG_REFERENCE.md](../config/CONFIG_REFERENCE.md)
