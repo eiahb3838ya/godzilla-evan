@@ -212,9 +212,9 @@ def on_depth(self, context, depth):
 ### 深入理解案例 (可選)
 
 如需深入理解系統架構和常見陷阱,可閱讀:
-- [operations/debugging_case_studies.md](../operations/debugging_case_studies.md) - 真實除錯案例分析
-  - 案例1: PM2 + 數據庫配置問題
-  - 案例2: 兩個數據庫路徑衝突
+- [operations/debugging_case_studies.md](../operations/debugging_case_studies.md) - 真實除錯案例分析 (進階學習資源)
+  - 案例1: PM2 + 數據庫配置問題 (實用價值高)
+  - 案例2: 兩個數據庫路徑衝突 (常見陷阱)
 
 ### Python/C++ 綁定細節
 

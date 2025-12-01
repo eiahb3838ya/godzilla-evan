@@ -90,6 +90,7 @@
 | **PM2** | operations/pm2_startup_guide.md | operations/QUICK_START.md |
 | **配置** | config/config_usage_map.md | config/dangerous_keys.md, config/account_naming_convention.md |
 | **Binance** | modules/binance_extension.md | contracts/binance_config_contract.md, adr/004-binance-market-toggle.md |
+| **除錯案例** | operations/debugging_case_studies.md | operations/debugging_guide.md |
 | **策略生命週期** | modules/strategy_framework.md | modules/strategy_lifecycle_flow.md |
 | **持倉管理** | modules/ledger_system.md | contracts/order_object_contract.md#position |
 | **Python 綁定** | modules/python_bindings.md | CODE_INDEX.md#pybind |
@@ -133,6 +134,7 @@
 | **contracts/order_object_contract.md** | ✅ 已驗證 | 2025-11-17 | msg.h:666-730 | 狀態機完整 |
 | **modules/binance_extension.md** | ✅ 已驗證 | 2025-11-20 | ADR-004 實作後 | 市場切換功能已更新 |
 | **operations/pm2_startup_guide.md** | ✅ 已驗證 | 2025-11-18 | - | 操作流程正確 |
+| **operations/debugging_case_studies.md** | ✅ 已驗證 | 2025-12-01 | - | 學習資源 (非操作指南) |
 | **contracts/depth_object_contract.md** | ✅ 已驗證 | 2025-11-17 | msg.h:242-302 | 陷阱說明清楚 |
 | **modules/strategy_framework.md** | ⚠️ 待驗證 | 2025-10-15 | strategy.py:35-184 | 可能有新 API |
 | **modules/yijinjing.md** | ✅ 已驗證 | 2025-11-10 | - | 核心機制穩定 |
