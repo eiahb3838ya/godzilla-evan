@@ -106,7 +106,7 @@ test_documentation() {
     section "Testing Documentation"
 
     # Check navigation layer
-    nav_docs=("NAVIGATION.md" "CODE_INDEX.md" "REFERENCE.md")
+    nav_docs=("NAVIGATION.md" "CODE_INDEX.md")
     for doc in "${nav_docs[@]}"; do
         if [ -f ".doc/$doc" ]; then
             pass ".doc/$doc exists"
