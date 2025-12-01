@@ -219,5 +219,4 @@ head -n 730 core/cpp/wingchun/include/kungfu/wingchun/msg.h | tail -n 65
 每次更新 CODE_INDEX.md 時,檢查以下文檔是否需同步:
 - [ ] contracts/*_object_contract.md (資料結構變更)
 - [ ] modules/python_bindings.md (綁定變更)
-- [ ] NAVIGATION.md (新增交叉引用)
-- [ ] REFERENCE.md (核心摘要)
+- [ ] NAVIGATION.md (新增交叉引用,更新快速入口)

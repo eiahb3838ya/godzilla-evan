@@ -1,5 +1,42 @@
 # .doc 導航系統
 
+## 🚀 30秒快速入口
+
+### 核心模組一句話
+
+| 模組 | 核心職責 | 延遲/特性 |
+|------|---------|----------|
+| **Yijinjing** (易筋經) | 事件溯源 + Journal | ~50-200μs |
+| **Wingchun** (詠春) | 策略執行 + 訂單路由 | 單執行緒回調 |
+| **Binance Extension** | 交易所連接器 | REST + WebSocket |
+
+### 最常用 API 速查
+
+```python
+# 策略初始化
+context.add_account("binance", "account_name")
+context.subscribe("binance", ["btc_usdt"], InstrumentType.Spot, Exchange.BINANCE)
+
+# 下單
+context.insert_order(symbol="btc_usdt", side=Side.Buy, price=42000, volume=0.001)
+
+# Order 物件關鍵欄位
+order.order_id      # 策略本地 ID
+order.ex_order_id   # 交易所 ID (Submitted 後才有值)
+order.status        # OrderStatus 枚舉
+order.volume_traded # 已成交量 (≤ volume)
+```
+
+### 常見陷阱速查
+
+| 問題 | 原因 | 解決 |
+|------|------|------|
+| 策略無法收到數據 | Symbol 格式錯誤 | 使用 `btc_usdt` (小寫+底線) |
+| IndexError: list index out of range | `ex_order_id` 過早存取 | 檢查 `status == OrderStatus.Submitted` |
+| TD Gateway 啟動失敗 | 帳號名稱格式錯誤 | 使用 `gz_user1` 非 `binance_gz_user1` |
+
+---
+
 ## 一、我想做什麼? (任務導向索引)
 
 ### 🎯 開發新策略

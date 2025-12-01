@@ -233,8 +233,7 @@ def on_depth(self, context, depth):
 ## 🔄 文檔導航
 
 **需要更詳細的導航?** 查看:
-- [NAVIGATION.md](../NAVIGATION.md) - 完整的任務導向索引
-- [REFERENCE.md](../REFERENCE.md) - 文檔系統概覽
+- [NAVIGATION.md](../NAVIGATION.md) - 完整的任務導向索引 (含30秒快速入口)
 - [CODE_INDEX.md](../CODE_INDEX.md) - 程式碼錨點索引
 
 **需要快速指令?** 查看:
