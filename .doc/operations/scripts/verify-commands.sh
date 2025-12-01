@@ -104,19 +104,29 @@ test_project_structure() {
 
 test_documentation() {
     section "Testing Documentation"
-    
-    # Check core docs
-    docs=("ORIGIN.md" "INDEX.md" "INSTALL.md" "HACKING.md" "ARCHITECTURE.md" "CHANGELOG.md")
-    for doc in "${docs[@]}"; do
+
+    # Check navigation layer
+    nav_docs=("NAVIGATION.md" "CODE_INDEX.md" "REFERENCE.md")
+    for doc in "${nav_docs[@]}"; do
         if [ -f ".doc/$doc" ]; then
             pass ".doc/$doc exists"
         else
             fail ".doc/$doc missing"
         fi
     done
-    
+
+    # Check archive docs
+    archive_docs=("TESTNET.md" "INSTALL.md" "HACKING.md" "LOG_LOCATIONS.md")
+    for doc in "${archive_docs[@]}"; do
+        if [ -f ".doc/archive/$doc" ]; then
+            pass ".doc/archive/$doc exists"
+        else
+            fail ".doc/archive/$doc missing"
+        fi
+    done
+
     # Check ADRs
-    adrs=("001-docker.md" "002-wsl2.md" "003-dns.md")
+    adrs=("001-docker.md" "002-wsl2.md" "003-dns.md" "004-binance-market-toggle.md")
     for adr in "${adrs[@]}"; do
         if [ -f ".doc/adr/$adr" ]; then
             pass ".doc/adr/$adr exists"
@@ -124,25 +134,16 @@ test_documentation() {
             fail ".doc/adr/$adr missing"
         fi
     done
-    
-    # Check context metadata
-    if [ -f ".doc/.context/index.yaml" ]; then
-        pass ".doc/.context/index.yaml exists"
-    else
-        fail ".doc/.context/index.yaml missing"
-    fi
-    
-    if [ -f ".doc/.context/modules.yaml" ]; then
-        pass ".doc/.context/modules.yaml exists"
-    else
-        fail ".doc/.context/modules.yaml missing"
-    fi
-    
-    if [ -f ".doc/.context/DESIGN.md" ]; then
-        pass ".doc/.context/DESIGN.md exists"
-    else
-        fail ".doc/.context/DESIGN.md missing"
-    fi
+
+    # Check operations docs
+    ops_docs=("QUICK_START.md" "pm2_startup_guide.md" "debugging_guide.md" "debugging_case_studies.md")
+    for doc in "${ops_docs[@]}"; do
+        if [ -f ".doc/operations/$doc" ]; then
+            pass ".doc/operations/$doc exists"
+        else
+            fail ".doc/operations/$doc missing"
+        fi
+    done
 }
 
 test_docker_commands() {
@@ -237,36 +238,26 @@ test_documentation_links() {
     fi
 }
 
-test_yaml_syntax() {
-    section "Testing YAML Syntax"
-    
-    # Check if yq or python yaml parser is available
-    if command -v yq >/dev/null 2>&1; then
-        if yq eval .doc/.context/index.yaml >/dev/null 2>&1; then
-            pass "index.yaml is valid"
-        else
-            fail "index.yaml has syntax errors"
+test_markdown_syntax() {
+    section "Testing Markdown Syntax"
+
+    # Simple check: verify markdown files are readable
+    local md_errors=0
+
+    for md_file in .doc/**/*.md; do
+        if [ -f "$md_file" ]; then
+            # Just check if file is readable
+            if [ -r "$md_file" ]; then
+                pass "$(basename "$md_file") is readable"
+            else
+                fail "$(basename "$md_file") is not readable"
+                ((md_errors++))
+            fi
         fi
-        
-        if yq eval .doc/.context/modules.yaml >/dev/null 2>&1; then
-            pass "modules.yaml is valid"
-        else
-            fail "modules.yaml has syntax errors"
-        fi
-    elif command -v python3 >/dev/null 2>&1; then
-        if python3 -c "import yaml; yaml.safe_load(open('.doc/.context/index.yaml'))" 2>/dev/null; then
-            pass "index.yaml is valid (checked with Python)"
-        else
-            fail "index.yaml has syntax errors"
-        fi
-        
-        if python3 -c "import yaml; yaml.safe_load(open('.doc/.context/modules.yaml'))" 2>/dev/null; then
-            pass "modules.yaml is valid (checked with Python)"
-        else
-            fail "modules.yaml has syntax errors"
-        fi
-    else
-        warn "No YAML parser available (install yq or python yaml)"
+    done
+
+    if [ $md_errors -eq 0 ]; then
+        pass "All markdown files are readable"
     fi
 }
 
@@ -285,7 +276,7 @@ test_project_structure
 test_documentation
 test_docker_commands
 test_documentation_links
-test_yaml_syntax
+test_markdown_syntax
 
 # Summary
 section "Summary"

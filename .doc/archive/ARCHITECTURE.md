@@ -714,12 +714,11 @@ Key files:
 
 ## Related Documentation
 
-- [ORIGIN.md](ORIGIN.md) - Project fork history
 - [INSTALL.md](INSTALL.md) - Environment setup
 - [HACKING.md](HACKING.md) - Development workflow
-- [adr/001-docker.md](adr/001-docker.md) - Docker decision
-- [adr/002-wsl2.md](adr/002-wsl2.md) - WSL2 decision
-- [adr/003-dns.md](adr/003-dns.md) - DNS strategy
+- [../adr/001-docker.md](../adr/001-docker.md) - Docker decision
+- [../adr/002-wsl2.md](../adr/002-wsl2.md) - WSL2 decision
+- [../adr/003-dns.md](../adr/003-dns.md) - DNS strategy
 
 ---
 

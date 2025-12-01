@@ -49,12 +49,10 @@
 │   ├── 003-dns.md                 # DNS 問題解決
 │   └── 004-binance-market-toggle.md # Binance 市場切換
 │
-└── archive/          # 大文檔存檔 (6 個文檔)
+└── archive/          # 大文檔存檔 (3 個文檔)
     ├── TESTNET.md       # 測試網設定完整指南
     ├── INSTALL.md       # 安裝指南
     ├── HACKING.md       # 開發指南
-    ├── DESIGN.md        # 設計文檔
-    ├── ORIGIN.md        # 專案起源
     └── LOG_LOCATIONS.md # 日誌位置完整清單
 ```
 
