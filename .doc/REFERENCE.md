@@ -1,73 +1,102 @@
 # .doc 文檔系統參考
 
+本文件提供 `.doc/` 目錄的快速概覽和核心摘要,詳細導航見 [NAVIGATION.md](NAVIGATION.md)。
+
+---
+
 ## 目錄結構
 
 ```
 .doc/
-├── REFERENCE.md      # 本文件 - 文檔系統快速參考
-├── modules/          # 模組說明（yijinjing, wingchun, binance）
-├── contracts/        # API 契約（order, depth, context_api）
-├── operations/       # 操作指南（pm2, cli, debugging）
-├── config/           # 配置說明（config_map, dangerous_keys）
-├── adr/              # 架構決策記錄
-└── archive/          # 大檔案、教學文檔（不自動載入）
+├── NAVIGATION.md     # 導航系統 (任務導向、關鍵字索引、依賴圖)
+├── CODE_INDEX.md     # 程式碼錨點索引 (檔案行號統一管理)
+├── REFERENCE.md      # 本文件 - 快速概覽
+│
+├── modules/          # 核心模組說明 (9 個文檔)
+│   ├── yijinjing.md           # 事件溯源機制
+│   ├── wingchun.md            # 交易引擎架構
+│   ├── strategy_framework.md # 策略開發框架
+│   ├── binance_extension.md  # Binance 實作
+│   ├── ledger_system.md       # 帳務系統
+│   ├── python_bindings.md     # Python/C++ 綁定
+│   ├── event_flow.md          # 事件流程圖
+│   ├── order_lifecycle_flow.md   # 訂單狀態機
+│   ├── strategy_lifecycle_flow.md # 策略生命週期
+│   └── trading_flow.md        # 交易完整流程
+│
+├── contracts/        # API 契約 (4 個文檔)
+│   ├── strategy_context_api.md    # Context API 完整參考
+│   ├── order_object_contract.md   # Order 物件契約
+│   ├── depth_object_contract.md   # Depth 物件契約
+│   └── binance_config_contract.md # Binance 配置契約
+│
+├── operations/       # 操作指南 (4 個文檔)
+│   ├── QUICK_START.md         # 快速啟動指令集
+│   ├── pm2_startup_guide.md   # PM2 完整操作指南
+│   ├── cli_operations_guide.md # CLI 工具詳解
+│   ├── debugging_guide.md     # 除錯診斷流程
+│   └── DEBUGGING.md           # 除錯完整手冊 (詳細版)
+│
+├── config/           # 配置說明 (4 個文檔)
+│   ├── config_usage_map.md         # 配置檔使用地圖
+│   ├── dangerous_keys.md           # 密鑰安全指南
+│   ├── account_naming_convention.md # 帳戶命名規範
+│   └── symbol_naming_convention.md  # 交易對命名規範
+│
+├── adr/              # 架構決策記錄 (4 個文檔)
+│   ├── 001-docker.md              # Docker 容器化決策
+│   ├── 002-wsl2.md                # WSL2 開發環境
+│   ├── 003-dns.md                 # DNS 問題解決
+│   └── 004-binance-market-toggle.md # Binance 市場切換
+│
+└── archive/          # 大文檔存檔 (6 個文檔)
+    ├── TESTNET.md       # 測試網設定完整指南
+    ├── INSTALL.md       # 安裝指南
+    ├── HACKING.md       # 開發指南
+    ├── DESIGN.md        # 設計文檔
+    ├── ORIGIN.md        # 專案起源
+    └── LOG_LOCATIONS.md # 日誌位置完整清單
 ```
 
-## 按需載入策略
-
-| 任務類型 | 載入文檔 |
-|----------|----------|
-| 開發新策略 | `modules/strategy_framework.md`, `contracts/context_api.md` |
-| 除錯問題 | `operations/debugging.md`, `config/config_map.md` |
-| 部署服務 | `operations/pm2_guide.md`, `operations/cli_guide.md` |
-| 新增交易所 | `modules/gateway_architecture.md`, `modules/binance.md` |
-| 架構決策 | `adr/*.md` |
+---
 
 ## 核心模組摘要
 
 ### Yijinjing (易筋經) - 事件溯源
-- **職責**: 事件記錄、訊息傳遞、時間旅行
+- **職責**: 事件記錄、訊息傳遞、時間旅行除錯
 - **延遲**: ~50-200μs
-- **詳細**: `modules/yijinjing.md`
+- **關鍵概念**: Journal (append-only log)、Reader/Writer、nano time
+- **詳細**: [modules/yijinjing.md](modules/yijinjing.md)
 
-### Wingchun (詠春) - 交易框架
-- **職責**: 策略執行、訂單管理、持倉追蹤
-- **回調**: `pre_start()` → `on_depth()` / `on_order()` → `pre_stop()`
-- **詳細**: `modules/wingchun.md`, `modules/strategy_framework.md`
+### Wingchun (詠春) - 交易引擎
+- **職責**: 策略執行、訂單路由、持倉追蹤、帳務管理
+- **架構**: Strategy Runner + Broker + Book + Gateway
+- **回調時序**: `pre_start()` → `on_depth()` / `on_order()` / `on_trade()` → `pre_stop()`
+- **詳細**: [modules/wingchun.md](modules/wingchun.md)
 
 ### Binance Extension - 交易所連接器
 - **職責**: REST API + WebSocket 實作
-- **支援**: Spot + Futures (Testnet/Mainnet)
-- **詳細**: `modules/binance.md`
+- **支援市場**: Spot (現貨) + Futures (合約)
+- **配置**: Testnet/Mainnet 編譯時決定,`enable_spot` / `enable_futures` 執行時切換
+- **詳細**: [modules/binance_extension.md](modules/binance_extension.md)
+
+---
 
 ## API 契約摘要
 
-### Order 物件
-```
-欄位: order_id, status, volume, volume_traded, avg_price, ex_order_id
-不變量: volume_traded <= volume
-陷阱: ex_order_id 在 Submitted 後才有值
-```
-
-### Depth 物件
-```
-欄位: bid_price[10], ask_price[10], bid_volume[10], ask_volume[10]
-不變量: bid_price[0] > bid_price[1] (降序), ask_price[0] < ask_price[1] (升序)
-陷阱: bid_price[0] 是最佳買價（最高），不是最差
-```
-
 ### Context API
+**完整參考**: [contracts/strategy_context_api.md](contracts/strategy_context_api.md)
+
 ```python
 # 帳戶管理
 context.add_account(source, account)
+context.list_accounts()
 
 # 訂閱市場數據
 context.subscribe(source, symbols, instrument_type, exchange)
 
-# 下單
+# 下單操作
 context.insert_order(symbol, side, price, volume, ...)
-
-# 取消訂單
 context.cancel_order(order_id)
 
 # 狀態管理
@@ -75,57 +104,80 @@ context.set_object(key, value)
 context.get_object(key)
 ```
 
-## 配置要點
+### Order 物件
+**完整參考**: [contracts/order_object_contract.md](contracts/order_object_contract.md)
 
-**配置位置**: `~/.config/kungfu/app/runtime/config/`
+- **關鍵欄位**: `order_id`, `ex_order_id`, `status`, `volume`, `volume_traded`, `avg_price`
+- **不變量**: `volume_traded ≤ volume`
+- **陷阱**: `ex_order_id` 在 `status=Submitted` 後才有值
 
-**危險配置項** (絕不提交):
-- `access_key` - API 金鑰
-- `secret_key` - API 密鑰
-- `passphrase` - API 密碼短語
+### Depth 物件
+**完整參考**: [contracts/depth_object_contract.md](contracts/depth_object_contract.md)
 
-**Testnet vs Mainnet**: 硬編碼在 `core/extensions/binance/include/common.h:18-71`
+- **結構**: `bid_price[10]`, `ask_price[10]`, `bid_volume[10]`, `ask_volume[10]`
+- **不變量**: `bid_price[0] > bid_price[1]` (降序), `ask_price[0] < ask_price[1]` (升序)
+- **陷阱**: `bid_price[0]` 是**最佳買價**(最高),不是最差
 
-## 操作指令快速參考
+---
 
-```bash
-# PM2 狀態
-docker exec godzilla-dev pm2 list
-docker exec godzilla-dev pm2 logs [service_name]
-docker exec godzilla-dev pm2 monit
+## 快速查找
 
-# 服務啟動
-docker exec -it godzilla-dev bash -c "cd /app/scripts/binance_test && ./run.sh start"
+### 按任務類型
 
-# 服務停止
-docker exec godzilla-dev pm2 stop all && docker exec godzilla-dev pm2 delete all
+| 我想... | 主要文檔 | 補充文檔 |
+|--------|---------|---------|
+| **開發新策略** | modules/strategy_framework.md | contracts/strategy_context_api.md |
+| **除錯 Binance** | modules/binance_extension.md | config/config_usage_map.md, archive/TESTNET.md |
+| **理解架構** | modules/yijinjing.md, modules/wingchun.md | modules/event_flow.md |
+| **服務部署** | operations/QUICK_START.md | operations/pm2_startup_guide.md |
+| **新增交易所** | modules/wingchun.md | modules/binance_extension.md (參考實作) |
 
-# 建置
-docker exec -it godzilla-dev bash -c "cd /app/core/build && make -j\$(nproc)"
-```
+**詳細導航**: 見 [NAVIGATION.md](NAVIGATION.md)
 
-## 程式碼錨點
+---
 
-**資料結構** (`msg.h`):
-- Order: 666-730
-- Depth: 242-302
-- Position: 1000-1071
-- Asset: 947-998
+### 按關鍵字
 
-**策略執行** (`runner.cpp`):
-- 生命週期: 55-194
-- Depth 事件: 66-76
-- Order 路由: 124-141
+| 關鍵字 | 文檔 |
+|--------|------|
+| Order | contracts/order_object_contract.md |
+| Depth | contracts/depth_object_contract.md |
+| Journal | modules/yijinjing.md |
+| Context API | contracts/strategy_context_api.md |
+| PM2 | operations/pm2_startup_guide.md, operations/QUICK_START.md |
+| 配置 | config/config_usage_map.md |
+| Binance | modules/binance_extension.md |
 
-**Python 綁定** (`pybind_wingchun.cpp`):
-- 枚舉: 264-319
-- Order: 516-547
-- Context: 719-743
+**完整索引**: 見 [NAVIGATION.md#關鍵字快速查找](NAVIGATION.md#二關鍵字快速查找)
+
+---
+
+## 文檔統計
+
+- **總文檔數**: 36 個 .md 文件
+- **總大小**: ~1.1MB
+- **預估 tokens**: ~576k (全載入)
+- **推薦冷啟動**: CLAUDE.md + NAVIGATION.md ≈ 800 tokens
+- **一般任務**: 2-3 個文檔 ≈ 15-20k tokens
+
+---
 
 ## 維護指南
 
-修改程式碼後：
-1. 更新相關 `modules/*.md` 文檔
-2. 如有 API 變更，更新 `contracts/*.md`
-3. 如有配置變更，更新 `config/*.md`
-4. 重大架構決策記錄到 `adr/`
+修改程式碼後,更新相關文檔:
+
+| 修改類型 | 需更新文檔 |
+|---------|-----------|
+| **資料結構** (msg.h) | contracts/*_object_contract.md + CODE_INDEX.md |
+| **API** (context.cpp) | contracts/strategy_context_api.md |
+| **生命週期** (runner.cpp) | modules/strategy_framework.md, modules/strategy_lifecycle_flow.md |
+| **Python 綁定** (pybind_wingchun.cpp) | modules/python_bindings.md |
+| **配置** | config/config_usage_map.md, contracts/binance_config_contract.md |
+| **架構決策** | 新增 adr/00X-decision-name.md |
+
+**驗證工具**:
+```bash
+python3 .doc/operations/scripts/verify_code_refs.py  # 檢查程式碼引用
+python3 .doc/operations/scripts/check_links.py       # 檢查連結完整性
+python3 .doc/operations/scripts/estimate_tokens.py   # 估算 token 數量
+```
