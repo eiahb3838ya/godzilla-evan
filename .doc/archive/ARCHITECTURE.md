@@ -1,59 +1,45 @@
 ---
 title: System Architecture
-updated_at: 2025-11-17
+updated_at: 2025-12-01
 owner: core-dev
 lang: en
-tokens_estimate: 2700
-layer: 00_index
-tags: [architecture, yijinjing, wingchun, design, event-sourcing]
-purpose: "Technical architecture based on actual code analysis"
+tokens_estimate: 1500
+layer: archive
+tags: [architecture, overview, high-level]
+purpose: "High-level system architecture overview - detailed docs in modules/"
 ---
 
 # System Architecture
 
-Technical architecture based on actual code analysis (2025-10-23).
+**技術棧**: C++17 (核心) + Python 3.8+ (策略) + pybind11 (綁定)  
+**性能指標**: 納秒級時間精度, <1μs 事件寫入, 1M+ events/sec 吞吐量
 
-## Overview
+**詳細技術文檔**: 見 [`..modules/`](../modules/) 目錄
 
-High-frequency trading framework with two subsystems:
+---
 
-- **yijinjing** (易筋經): Event sourcing infrastructure (7.3K lines C++)
-- **wingchun** (詠春): Trading abstraction layer (5.8K lines C++)
-
-**Technology Stack**:
-- C++17 (core)
-- Python 3.8+ (strategies, bindings via pybind11)
-- RxCPP 4.1.0 (reactive programming)
-- nanomsg 1.1.5 (IPC)
-- SQLite (metadata storage)
-
-**Performance Profile**:
-- Time precision: nanosecond (int64_t)
-- Event write: <1μs (memory-mapped)
-- Throughput: 1M+ events/sec
-- Zero-copy reads
-
-## Architecture Layers
+## 三層架構
 
 ```
 ┌─────────────────────────────────────┐
-│  Python Strategies (strategies/)    │
-│  - User trading logic                │
-│  - Strategy callbacks                │
+│  Python Strategies (策略層)         │
+│  - 用戶交易邏輯                      │
+│  - 策略回調 (on_depth, on_order)    │
 └──────────────┬──────────────────────┘
-               │ Python API (pybind11)
+               │ pybind11
 ┌──────────────▼──────────────────────┐
-│  wingchun (Trading Layer)           │
-│  - Broker (order routing)           │
-│  - Gateway (exchange connectors)    │
-│  - Strategy context                 │
+│  Wingchun (交易引擎層)               │
+│  - Strategy Runner (策略執行)       │
+│  - Broker (訂單路由)                │
+│  - Book (持倉追蹤)                  │
+│  - Gateway (交易所連接)             │
 └──────────────┬──────────────────────┘
                │ Event API
 ┌──────────────▼──────────────────────┐
-│  yijinjing (Event Infrastructure)   │
-│  - Journal (persistent log)         │
-│  - I/O device (read/write)          │
-│  - Time system (nanosecond)         │
+│  Yijinjing (事件溯源層)             │
+│  - Journal (append-only log)       │
+│  - Reader/Writer (zero-copy I/O)   │
+│  - Time System (nanosecond)        │
 └──────────────┬──────────────────────┘
                │ Memory-mapped files
 ┌──────────────▼──────────────────────┐
@@ -61,665 +47,248 @@ High-frequency trading framework with two subsystems:
 └─────────────────────────────────────┘
 ```
 
-## yijinjing (易筋經) - Event Sourcing
+---
 
-**Location**: `core/cpp/yijinjing/`
+## Yijinjing (易筋經) - 事件溯源
 
-### Three-Layer Storage Design
+**核心概念**: Event Sourcing + Memory-Mapped Journal
 
+### 三層儲存設計
 ```
-Journal (API layer)
-   ↓
-Page (1-128 MB memory-mapped file)
-   ↓
+Journal (API 層)
+   ↓ 管理
+Page (1-128 MB 記憶體映射檔案)
+   ↓ 包含
 Frame (48-byte header + data)
 ```
 
-### Frame Structure
-
-Source: `include/kungfu/yijinjing/journal/frame.h`
-
+### Frame 結構
 ```cpp
-struct frame_header {  // 48 bytes, packed
-    uint32_t length;         // Total frame length
-    uint32_t header_length;  // sizeof(frame_header) = 48
-    int64_t gen_time;        // Generation time (nanoseconds)
-    int64_t trigger_time;    // Trigger time (latency tracking)
-    int32_t msg_type;        // Message type ID
-    uint32_t source;         // Source location UID
-    uint32_t dest;           // Destination location UID
-} __attribute__((packed));
-```
-
-**Zero-Copy Design**:
-- `frame` object = pointer to mmap region
-- `data<T>()` template returns typed reference (no copy)
-- Memory layout: `[header][user_data]`
-
-### Page Management
-
-Source: `include/kungfu/yijinjing/journal/page.h`
-
-**Adaptive Sizing**:
-```cpp
-// From page.h
-if (category == MD && dest_id == 0)
-    page_size = 128 * MB;  // Market data: high throughput
-else if ((category == TD || category == STRATEGY) && dest_id != 0)
-    page_size = 4 * MB;    // Trading/Strategy: moderate
-else
-    page_size = 1 * MB;    // Default
-```
-
-**Page Header**:
-```cpp
-struct page_header {
-    uint32_t version;              // Journal version = 4
-    uint32_t page_size;            // Configured size
-    uint64_t last_frame_position;  // Write pointer
-} __attribute__((packed));
-```
-
-**Operations**:
-- `is_full()`: check if space for next frame
-- `begin_time()`, `end_time()`: time range of page
-- Auto-rotation when full
-
-### Journal Operations
-
-Source: `include/kungfu/yijinjing/journal/journal.h`
-
-**Reader** (multi-journal subscription):
-```cpp
-class reader {
-    void join(location, dest_id, from_time);  // Subscribe from time T
-    void disjoin(location_uid);               // Unsubscribe
-    frame_ptr current_frame();                // Current event
-    void next();                              // Advance
-    void seek_to_time(nanotime);              // Jump to time
-    void sort();                              // Time-based merge sort
+struct frame_header {  // 48 bytes
+    uint32_t length;         // 總長度
+    int64_t gen_time;        // 生成時間 (nanoseconds)
+    int64_t trigger_time;    // 觸發時間 (延遲追蹤)
+    int32_t msg_type;        // 訊息類型 ID
+    uint32_t source;         // 來源 location UID
+    uint32_t dest;           // 目標 location UID
 };
 ```
 
-**Writer** (single-journal writing):
-```cpp
-class writer {
-    frame_ptr open_frame(trigger_time, msg_type, length);  // Allocate
-    void close_frame(data_length);                         // Finalize
-    template<typename T>
-    frame_ptr write(trigger_time, msg_type, const T& data); // Type-safe write
-};
-```
+**Zero-Copy 設計**: Frame 是指向 mmap 區域的指標,無資料複製
 
-### Location System
-
-Source: `include/kungfu/yijinjing/common.h`
-
-**Classification**:
-```cpp
-enum class mode : int8_t {
-    LIVE,      // Real-time trading
-    DATA,      // Data recording
-    REPLAY,    // Event replay
-    BACKTEST   // Backtesting
-};
-
-enum class category : int8_t {
-    MD,        // Market Data
-    TD,        // Trade Data  
-    STRATEGY,  // Strategy
-    SYSTEM     // System events
-};
-
-enum class layout : int8_t {
-    JOURNAL,   // Memory-mapped journal
-    SQLITE,    // SQLite database
-    NANOMSG,   // IPC socket
-    LOG        // Log file
-};
-```
-
-**Location Identity**:
-```cpp
-class location {
-    const mode mode;
-    const category category;
-    const string group;        // e.g., "binance"
-    const string name;         // e.g., "BTC-USDT"
-    const string uname;        // "md/binance/BTC-USDT/live"
-    const uint32_t uid;        // hash32(uname)
-};
-```
-
-Storage path: `runtime/journal/[date]/[source_uid]/[dest_uid]_[page_id].journal`
-
-### Time System
-
-Source: `include/kungfu/yijinjing/time.h`
-
-**Precision**: nanosecond
-```cpp
-time_unit::NANOSECONDS_PER_SECOND = 1,000,000,000
-
-int64_t time::now_in_nano();  // Unix timestamp * 1e9 + ns
-int64_t time::strptime(timestr, format);
-string time::strftime(nanotime, format);
-```
-
-All timestamps: `int64_t` (nanoseconds since Unix epoch)
-
-### Event System
-
-Source: `include/kungfu/yijinjing/common.h`
-
-**Base Interface**:
-```cpp
-class event {
-    virtual int64_t gen_time() const = 0;
-    virtual int64_t trigger_time() const = 0;
-    virtual int32_t msg_type() const = 0;
-    virtual uint32_t source() const = 0;
-    virtual uint32_t dest() const = 0;
-    virtual uint32_t data_length() const = 0;
-    
-    template<typename T>
-    const T& data() const;  // Zero-copy typed access
-};
-```
-
-**Publisher/Observer** (IPC notifications):
-```cpp
-class publisher {
-    virtual int notify() = 0;
-    virtual int publish(const string& json_message) = 0;
-};
-
-class observer {
-    virtual bool wait() = 0;
-    virtual const string& get_notice() = 0;
-};
-```
-
-### I/O Device
-
-Source: `include/kungfu/yijinjing/io.h`
-
-Central I/O hub for each component:
-```cpp
-class io_device {
-    journal::reader_ptr open_reader_to_subscribe();
-    journal::reader_ptr open_reader(location, dest_id);
-    journal::writer_ptr open_writer(dest_id);
-    nanomsg::socket_ptr connect_socket(location, protocol, timeout);
-    nanomsg::socket_ptr bind_socket(protocol, timeout);
-    publisher_ptr get_publisher();
-    observer_ptr get_observer();
-};
-```
-
-**Variants**:
-- `io_device_master`: Master process (REP socket)
-- `io_device_client`: Client process (REQ socket)
-
-### Reactive Programming
-
-Uses RxCPP for event filtering:
-```cpp
-// From common.h
-rx::is(msg_type)   // Filter by message type
-rx::from(source)   // Filter by source UID
-rx::to(dest)       // Filter by destination UID
-```
-
-## wingchun (詠春) - Trading Layer
-
-**Location**: `core/cpp/wingchun/`
-
-Depends on yijinjing: `INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/cpp/yijinjing/include)`
-
-### Trading Data Types
-
-Source: `include/kungfu/wingchun/common.h`
-
-**Constants**:
-```cpp
-const int SYMBOL_LEN = 32;
-const int EXCHANGE_ID_LEN = 16;
-const int ACCOUNT_ID_LEN = 32;
-const int ORDER_ID_LEN = 32;
-```
-
-**Core Enums**:
-```cpp
-enum class InstrumentType : int8_t {
-    Unknown, FFuture, DFuture, Future, 
-    Etf, Spot, Index, Swap
-};
-
-enum class Side : int8_t {
-    Buy, Sell, Lock, Unlock, Exec, Drop
-};
-
-enum class Offset : int8_t {
-    Open, Close, CloseToday, CloseYesterday
-};
-
-enum class OrderType : int8_t {
-    Limit,   // Limit order
-    Market,  // Market order
-    Mock,    // Self-trade
-    UnKnown
-};
-
-enum class OrderStatus : int8_t {
-    Unknown, Submitted, Pending, Cancelled, 
-    Error, Filled, PartialFilledNotActive, 
-    PartialFilledActive, PreSend
-};
-```
-
-**Exchanges** (from source):
-```cpp
-#define EXCHANGE_BINANCE "binance"
-#define EXCHANGE_OKX "okx"
-#define EXCHANGE_GATE "gate"
-#define EXCHANGE_MEXC "mexc"
-#define EXCHANGE_BYBIT "bybit"
-#define EXCHANGE_KUCOIN "kucoin"
-#define EXCHANGE_XT "xt"
-#define EXCHANGE_COINW "coinw"
-```
-
-### Message Types
-
-Source: `include/kungfu/wingchun/msg.h` (1085 lines!)
-
-**Market Data** (101-110):
-```cpp
-enum MsgType {
-    Depth = 101,        // Order book depth
-    Ticker = 102,       // Ticker data
-    Trade = 103,        // Trade data
-    IndexPrice = 104,   // Index price
-    Bar = 110,          // K-line bar
-```
-
-**Trading** (201-213):
-```cpp
-    OrderInput = 201,        // Order submission
-    OrderAction = 202,       // Order action (cancel/query)
-    Order = 203,             // Order status update
-    MyTrade = 204,           // Trade execution
-    Position = 205,          // Position update
-    Asset = 206,             // Asset balance
-    AssetSnapshot = 207,     // Asset snapshot
-    Instrument = 209,        // Instrument info
-    AlgoOrderInput = 210,    // Algo order input
-    AlgoOrderReport = 211,   // Algo order report
-    AlgoOrderModify = 212,   // Algo order modify
-    OrderActionError = 213,  // Order action error
-```
-
-**Subscription** (302-304):
-```cpp
-    Subscribe = 302,         // Subscribe market data
-    SubscribeAll = 303,      // Subscribe all
-    Unsubscribe = 304,       // Unsubscribe
-```
-
-**Key Data Structures** (packed structs):
-```cpp
-struct Instrument {
-    char symbol[SYMBOL_LEN];
-    char exchange_id[EXCHANGE_ID_LEN];
-    InstrumentType instrument_type;
-    char product_id[PRODUCT_ID_LEN];
-    int contract_multiplier;
-    double price_tick;
-    char open_date[DATE_LEN];
-    char expire_date[DATE_LEN];
-    int delivery_year;
-    int delivery_month;
-    bool is_trading;
-    double long_margin_ratio;
-    double short_margin_ratio;
-} __attribute__((packed));
-
-struct Ticker {
-    char source_id[SOURCE_ID_LEN];
-    char symbol[SYMBOL_LEN];
-    char exchange_id[EXCHANGE_ID_LEN];
-    int64_t data_time;
-    InstrumentType instrument_type;
-    double bid_price;
-    double bid_volume;
-    double ask_price;
-    double ask_volume;
-} __attribute__((packed));
-
-struct Order {
-    char symbol[SYMBOL_LEN];
-    char exchange_id[EXCHANGE_ID_LEN];
-    char account_id[ACCOUNT_ID_LEN];
-    char order_id[ORDER_ID_LEN];
-    int64_t insert_time;
-    int64_t update_time;
-    OrderStatus status;
-    Side side;
-    Offset offset;
-    double limit_price;
-    double frozen_price;
-    int64_t volume;
-    int64_t volume_traded;
-    // ... more fields
-} __attribute__((packed));
-```
-
-### Broker Layer
-
-Source: `include/kungfu/wingchun/broker/`
-
-**MarketData** (marketdata.h):
-```cpp
-class MarketData : public practice::apprentice {
-    virtual bool subscribe(const vector<Instrument>& instruments) = 0;
-    virtual bool subscribe_trade(const vector<Instrument>&) = 0;
-    virtual bool subscribe_ticker(const vector<Instrument>&) = 0;
-    virtual bool subscribe_index_price(const vector<Instrument>&) = 0;
-    virtual bool subscribe_all() = 0;
-    virtual bool unsubscribe(const vector<Instrument>&) = 0;
-};
-```
-
-**Trader** (trader.h):
-- Order submission
-- Order cancellation
-- Position queries
-- Asset queries
-
-### Strategy Layer
-
-Source: `include/kungfu/wingchun/strategy/strategy.h`
-
-**Strategy Base Class**:
-```cpp
-class Strategy {
-    // Lifecycle
-    virtual void pre_start(Context_ptr context) {}
-    virtual void post_start(Context_ptr context) {}
-    virtual void pre_stop(Context_ptr context) {}
-    virtual void post_stop(Context_ptr context) {}
-    
-    // Market data callbacks
-    virtual void on_depth(Context_ptr, const Depth& depth) {}
-    virtual void on_ticker(Context_ptr, const Ticker& ticker) {}
-    virtual void on_index_price(Context_ptr, const IndexPrice&) {}
-    virtual void on_bar(Context_ptr, const Bar& bar) {}
-    
-    // Trading callbacks
-    virtual void on_order(Context_ptr, const Order& order) {}
-    virtual void on_trade(Context_ptr, const Trade& trade) {}
-    virtual void on_transaction(Context_ptr, const MyTrade&) {}
-    virtual void on_order_action_error(Context_ptr, const OrderActionError&) {}
-    virtual void on_position(Context_ptr, const Position&) {}
-};
-```
-
-User strategies override these callbacks.
-
-### Service Layer
-
-Source: `include/kungfu/wingchun/service/`
-
-**Ledger** (ledger.h):
-- Position tracking
-- PnL calculation
-- Asset management
-
-**Bar Service** (bar.h):
-- K-line aggregation
-- Time-based bar generation
-
-**Algo Service** (algo.h):
-- Algorithmic order management
-- TWAP, VWAP, etc.
-
-### Book
-
-Source: `include/kungfu/wingchun/book/book.h`
-
-Order book management for market making strategies.
-
-## Data Flow
-
-### Market Data Pipeline
-
-```
-Exchange (WebSocket)
-  ↓
-Gateway::on_message()
-  ↓
-Parse & normalize to wingchun::Ticker/Depth
-  ↓
-writer->write<Ticker>(msg_type::Ticker, ticker)
-  ↓
-yijinjing journal (persistent)
-  ↓
-Strategy reads via reader->next()
-  ↓
-Strategy::on_ticker(context, ticker)
-```
-
-### Order Execution Pipeline
-
-```
-Strategy::insert_order(context, order_input)
-  ↓
-writer->write<OrderInput>(msg_type::OrderInput, input)
-  ↓
-yijinjing journal
-  ↓
-Trader gateway reads order
-  ↓
-Exchange API call
-  ↓
-Exchange confirms
-  ↓
-Gateway::on_order_update()
-  ↓
-writer->write<Order>(msg_type::Order, order)
-  ↓
-yijinjing journal
-  ↓
-Strategy reads
-  ↓
-Strategy::on_order(context, order)
-```
-
-### Backtest Mode
-
-Set `mode = BACKTEST`:
-1. Historical journal replay (time-ordered)
-2. Strategy processes as if live
-3. Simulated order fills (based on market data)
-4. Results written to new journal
-5. Analysis via journal reader
-
-## Python Layer
-
-**Location**: `core/python/kungfu/`
-
-### Package Structure
-
-```
-kungfu/
-├── __main__.py         # kfc CLI entry (calls command.execute())
-├── command/            # CLI implementation
-│   ├── account/       # Account management
-│   ├── algo/          # Algo order commands
-│   └── journal/       # Journal inspection
-├── yijinjing/         # Python wrapper (pybind11)
-├── wingchun/          # Python wrapper (pybind11)
-│   ├── algo/         # Algo order Python API
-│   ├── backtest/     # Backtesting framework
-│   ├── book/         # Order book
-│   └── service/      # Services
-└── data/
-    └── sqlite/        # SQLite storage
-```
-
-### CLI Entry
-
-Source: `core/python/kungfu/__main__.py`
-
-```python
-import kungfu.command as kfc
-
-def main():
-    kfc.execute()  # Dispatches to subcommands
-```
-
-Command: `kfc`
-
-### Python Bindings
-
-Built with pybind11:
-- `core/cpp/yijinjing/pybind/` → `kungfu.yijinjing`
-- `core/cpp/wingchun/pybind/` → `kungfu.wingchun`
-
-Strategies written in Python call C++ core via bindings.
-
-## Extensions
-
-**Location**: `core/extensions/`
-
-Exchange-specific gateway implementations.
-
-Example: `core/extensions/binance/`
-- Implements `MarketData` and `Trader` interfaces
-- Handles Binance WebSocket protocol
-- Converts to wingchun data types
-
-## Threading Model
-
-**yijinjing**:
-- Single writer thread per journal (no locks)
-- Multiple reader threads (lock-free)
-- Nano
-
-msg socket threads for IPC
-
-**wingchun**:
-- One thread per Gateway (MD + TD)
-- One thread per Strategy
-- Shared Broker thread
-
-**Python**:
-- GIL limits to single-threaded Python execution
-- C++ worker threads bypass GIL
-
-## Performance Notes
-
-**Measured** (from code comments):
-- Journal write: <1μs
-- Software latency: <20μs (strategy decision to wire)
-- Network latency: 1-10ms (variable)
-
-**Optimizations**:
-1. Memory-mapped files (zero-copy)
-2. Lock-free reads (page is read-only after written)
-3. Packed structs (cache-friendly)
-4. Lazy page loading
-5. Pre-allocated frame buffers
-
-**Bottlenecks**:
-- Network to exchange (largest component)
-- Python GIL (if strategy in Python)
-- Disk I/O (mitigated by mmap)
-
-## Configuration
-
-**Environment Variables**:
-```bash
-KF_HOME      # Base folder (default: ./runtime)
-KF_LOG_LEVEL # Logging level (DEBUG/INFO/WARN/ERROR)
-KF_NO_EXT    # Disable extensions if set
-```
-
-**Runtime Structure**:
-```
-runtime/
-├── journal/           # Event journals
-│   └── [date]/
-│       └── [source_uid]/
-├── log/              # Application logs
-├── config/           # Configuration files
-└── cache/            # Temporary data
-```
-
-## Build System
-
-**Root**: `core/CMakeLists.txt`
-
-```cmake
-PROJECT(kungfu)
-SET(CMAKE_CXX_STANDARD 17)
-
-ADD_SUBDIRECTORY(deps)     # Third-party deps
-ADD_SUBDIRECTORY(cpp)      # C++ core
-ADD_SUBDIRECTORY(extensions) # Exchange gateways
-```
-
-**Dependencies** (from CMakeLists.txt):
-- nanomsg 1.1.5
-- spdlog 1.3.1
-- json 3.5.0 (nlohmann)
-- SQLiteCpp 2.3.0
-- fmt 5.3.0
-- rxcpp 4.1.0
-
-**Python Setup**: `core/python/setup.py`
-```python
-setup(
-    name="kungfu",
-    entry_points={"console_scripts": ["kfc = kungfu.__main__:main"]},
-    install_requires=[
-        "click>=5.1",
-        "sqlalchemy==1.3.8",
-        "psutil==5.6.2",
-        "numpy",
-        "pandas",
-        "tabulate==0.8.3",
-        "PyInquirer==1.0.3",
-        "prompt_toolkit==1.0.14",
-        "rx==3.0.1"
-    ],
-)
-```
-
-## Code Statistics
-
-Based on actual file counts (2025-10-23):
-
-```
-core/cpp/yijinjing:  7,357 lines
-core/cpp/wingchun:   5,799 lines
-core/python:         ~5,000 lines (estimated)
-Total core:          ~18,000 lines
-```
-
-Key files:
-- `wingchun/msg.h`: 1,085 lines (trading message definitions)
-- `yijinjing/common.h`: 310 lines (core abstractions)
-
-## Related Documentation
-
-- [INSTALL.md](INSTALL.md) - Environment setup
-- [HACKING.md](HACKING.md) - Development workflow
-- [../adr/001-docker.md](../adr/001-docker.md) - Docker decision
-- [../adr/002-wsl2.md](../adr/002-wsl2.md) - WSL2 decision
-- [../adr/003-dns.md](../adr/003-dns.md) - DNS strategy
+**詳細文檔**: [`modules/yijinjing.md`](../modules/yijinjing.md)
 
 ---
 
-Last Updated: 2025-10-23 (Based on code reading)
+## Wingchun (詠春) - 交易引擎
+
+**核心概念**: Actor-based Trading Framework
+
+### 四個核心組件
+
+1. **Strategy Runner** - 策略執行環境
+   - 管理策略生命週期
+   - 路由事件到回調函數
+   - 提供 Context API
+
+2. **Broker** - 訂單路由與管理
+   - 訂單狀態機 (Pending → Submitted → Filled)
+   - 路由到正確的 Gateway
+   - 訂單追蹤與驗證
+
+3. **Book** - 持倉與帳務
+   - 實時持倉追蹤
+   - PnL 計算
+   - 資金管理
+
+4. **Gateway** - 交易所介面
+   - MarketData: WebSocket 訂閱
+   - Trader: REST API 下單
+   - 抽象介面 (可擴展)
+
+### 事件流
+```
+MD Gateway → Journal → Strategy → Journal → TD Gateway
+     ↓                    ↓                      ↓
+   Depth              on_depth()              Order
+```
+
+**詳細文檔**: 
+- [`modules/wingchun.md`](../modules/wingchun.md)
+- [`modules/event_flow.md`](../modules/event_flow.md)
+
+---
+
+## Python/C++ 綁定
+
+**技術**: pybind11 (自動型別轉換 + GIL 管理)
+
+### 綁定層次
+```python
+# Python 策略
+from kungfu.wingchun import Strategy, Side, OrderStatus
+
+class MyStrategy(Strategy):
+    def on_depth(self, context, depth):  # ← C++ Depth 物件
+        context.insert_order(...)         # ← 呼叫 C++ Context API
+```
+
+**關鍵特性**:
+- **Type Conversion**: C++ `Order` ↔ Python `Order` (自動)
+- **GIL 釋放**: I/O 操作時釋放 GIL
+- **Memory Safety**: 物件生命週期由 C++ 管理
+
+**詳細文檔**: [`modules/python_bindings.md`](../modules/python_bindings.md)
+
+---
+
+## Binance Extension
+
+**實作**: REST API (下單/查詢) + WebSocket (market data)
+
+### 市場支援
+- **Spot** (現貨): `/api/v3/` endpoints
+- **Futures** (合約): `/fapi/v1/` endpoints  
+- **Toggle**: 執行時可切換 (`enable_spot`, `enable_futures`)
+
+### 配置
+- **Testnet/Mainnet**: 編譯時決定 (`TESTNET` flag)
+- **API Keys**: 從資料庫載入,不寫入程式碼
+
+**詳細文檔**: 
+- [`modules/binance_extension.md`](../modules/binance_extension.md)
+- [`adr/004-binance-market-toggle.md`](../adr/004-binance-market-toggle.md)
+
+---
+
+## 資料結構 (msg.h)
+
+**Location**: `core/cpp/wingchun/include/kungfu/wingchun/msg.h`
+
+### 核心結構
+
+| 結構體 | 行號 | 用途 | 關鍵不變量 |
+|--------|------|------|-----------|
+| **Order** | 666-730 | 訂單狀態機 | `volume_traded ≤ volume` |
+| **Depth** | 242-302 | 市場深度 (10 檔) | `bid_price[0] > bid_price[1]` |
+| **Position** | 1000-1071 | 持倉追蹤 | `long_tot = long_yd + long_td` |
+| **Asset** | 947-998 | 資金狀態 | `avail ≤ total` |
+
+**詳細文檔**: 
+- [`contracts/order_object_contract.md`](../contracts/order_object_contract.md)
+- [`contracts/depth_object_contract.md`](../contracts/depth_object_contract.md)
+- [`CODE_INDEX.md`](../CODE_INDEX.md)
+
+---
+
+## 配置系統
+
+### 配置檔位置
+```
+~/.config/kungfu/app/runtime/config/
+├── md/
+│   └── binance/config.json          # Market Data 配置
+└── td/
+    └── binance/<account>.json       # Trading 配置 (API keys)
+```
+
+### 危險配置項 (絕不提交到 Git)
+- `access_key` - API 金鑰
+- `secret_key` - API 密鑰  
+- `passphrase` - API 密碼短語
+
+**詳細文檔**: [`config/CONFIG_REFERENCE.md`](../config/CONFIG_REFERENCE.md)
+
+---
+
+## 效能特性
+
+### Yijinjing
+- **Event Write**: <1μs (memory-mapped)
+- **Throughput**: 1M+ events/sec
+- **Zero-Copy**: Frame 直接指向 mmap 區域
+
+### Wingchun
+- **Callback Latency**: ~50-200μs (Python → C++ → Python)
+- **Order Routing**: <100μs
+- **Single-threaded**: 策略回調循序執行 (<1ms/callback)
+
+### Binance Extension
+- **REST API**: ~10-50ms (依網路)
+- **WebSocket**: ~1-5ms 延遲
+- **Reconnect**: 自動重連 (exponential backoff)
+
+---
+
+## 開發工作流
+
+### 策略開發
+1. 繼承 `Strategy` 類別
+2. 實作回調: `pre_start()`, `on_depth()`, `on_order()`
+3. 使用 Context API: `add_account()`, `subscribe()`, `insert_order()`
+4. 測試: 先測試網,再實盤
+
+### 新增交易所
+1. 繼承 `MarketData` + `Trader`
+2. 實作介面: `subscribe()`, `insert_order()`, `cancel_order()`
+3. 註冊到 `EXTENSION_REGISTRY_MD/TD`
+4. 創建配置契約文檔
+
+**詳細文檔**: 
+- [`modules/strategy_framework.md`](../modules/strategy_framework.md)
+- [`modules/wingchun.md`](../modules/wingchun.md#新增交易所)
+
+---
+
+## 常見陷阱
+
+1. **Depth 索引**: `bid_price[0]` 是**最佳買價**(最高),不是最差
+2. **Order 狀態**: `ex_order_id` 在 `status=Submitted` 後才有值
+3. **Symbol 格式**: 必須是 `btc_usdt` (小寫+底線),不是 `BTCUSDT`
+4. **Account 命名**: PM2 用 `gz_user1`,資料庫是 `binance_gz_user1`
+5. **Journal 是 Append-only**: 無法刪除事件,只能replay
+
+**詳細除錯**: [`operations/debugging_guide.md`](../operations/debugging_guide.md)
+
+---
+
+## 檔案統計
+
+**C++ 核心** (~13K 行):
+- `yijinjing/`: 7.3K 行 (event sourcing)
+- `wingchun/`: 5.8K 行 (trading framework)
+
+**Extensions** (~2K 行):
+- `binance/`: ~2K 行 (REST + WebSocket)
+
+**Python 層** (~3K 行):
+- `command/`: CLI 工具
+- `wingchun/`: Strategy + bindings
+
+**關鍵檔案**:
+- `msg.h`: 1,085 行 (資料結構定義)
+- `runner.cpp`: ~200 行 (策略執行引擎)
+- `pybind_wingchun.cpp`: ~800 行 (Python 綁定)
+
+---
+
+## 延伸閱讀
+
+### 核心概念
+- [`modules/yijinjing.md`](../modules/yijinjing.md) - 事件溯源機制
+- [`modules/wingchun.md`](../modules/wingchun.md) - 交易引擎架構
+- [`modules/event_flow.md`](../modules/event_flow.md) - 完整事件流
+
+### 開發指南
+- [`modules/strategy_framework.md`](../modules/strategy_framework.md) - 策略開發
+- [`contracts/strategy_context_api.md`](../contracts/strategy_context_api.md) - API 參考
+- [`operations/debugging_guide.md`](../operations/debugging_guide.md) - 除錯指南
+
+### 架構決策
+- [`adr/001-docker.md`](../adr/001-docker.md) - 為何用 Docker
+- [`adr/004-binance-market-toggle.md`](../adr/004-binance-market-toggle.md) - 市場切換設計
+
+---
+
+**最後更新**: 2025-12-01  
+**預估 Token**: ~1500

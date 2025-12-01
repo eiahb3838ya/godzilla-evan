@@ -1,479 +1,315 @@
 ---
 title: Development Guide
-updated_at: 2025-11-17
+updated_at: 2025-12-01
 owner: core-dev
 lang: en
-tokens_estimate: 1500
-layer: 00_index
-tags: [development, workflow, contribution, coding-guide]
-purpose: "How to develop and contribute to this project"
+tokens_estimate: 1000
+layer: archive
+tags: [development, workflow, contribution]
+purpose: "Quick development workflow guide"
 ---
 
 # Development Guide
 
-How to develop and contribute to this project.
+**快速開始**: 閱讀 [NAVIGATION.md](../NAVIGATION.md) 找到對應的開發任務
 
-## Code Structure
+---
+
+## 開發環境
+
+### 必要工具
+- **Docker** + **Docker Compose** (所有開發在容器內)
+- **Git** (版本控制)
+- **VSCode** (推薦 IDE)
+
+### 容器設定
+```bash
+# 啟動開發容器
+docker-compose up -d
+
+# 進入容器
+docker exec -it godzilla-dev bash
+```
+
+---
+
+## 程式碼結構
 
 ```
 godzilla-evan/
 ├── core/
-│   ├── cpp/                    # C++ core
-│   │   ├── yijinjing/         # Event system (易筋經)
-│   │   │   ├── journal/       # Journal storage
-│   │   │   ├── time/          # Time management
-│   │   │   └── io/            # I/O operations
-│   │   └── wingchun/          # Trading gateway (詠春)
-│   │       ├── gateway/       # Exchange connectors
-│   │       ├── strategy/      # Strategy engine
-│   │       └── broker/        # Order routing
-│   ├── python/                # Python bindings
-│   │   └── kungfu/            # Main package
-│   │       ├── command/       # CLI commands
-│   │       ├── yijinjing/     # Python API for yijinjing
-│   │       └── wingchun/      # Python API for wingchun
-│   ├── deps/                  # Third-party dependencies
-│   └── build/                 # Build output (in container)
-├── strategies/                # Trading strategies
-│   ├── helloworld/
-│   └── triangular_arbitrage/
-└── scripts/                   # Utility scripts
+│   ├── cpp/                    # C++ 核心
+│   │   ├── yijinjing/         # 事件系統
+│   │   └── wingchun/          # 交易引擎
+│   ├── python/kungfu/         # Python 綁定 + CLI
+│   ├── extensions/binance/    # Binance 交易所
+│   └── build/                 # 編譯輸出
+├── strategies/                # 交易策略
+├── scripts/                   # PM2 配置
+└── .doc/                      # 文檔系統
 ```
 
-## Core Modules
+**詳細索引**: [`CODE_INDEX.md`](../CODE_INDEX.md)
 
-### yijinjing (易筋經)
+---
 
-Journal-based event system for high-frequency trading.
+## 開發工作流
 
-**Purpose**: Persistent event storage and replay  
-**Language**: C++17  
-**Key Concepts**:
-- Journal: Append-only event log
-- Reader: Read events from journal
-- Writer: Write events to journal
-- Frame: Time-indexed event container
+### 1. 開發新策略
 
-**Location**: `core/cpp/yijinjing/`
-
-### wingchun (詠春)
-
-Trading gateway abstraction layer.
-
-**Purpose**: Unified interface for multiple exchanges  
-**Language**: C++17 + Python  
-**Key Concepts**:
-- Gateway: Exchange connector
-- Strategy: Trading logic
-- Broker: Order management
-- Position: Position tracking
-
-**Location**: `core/cpp/wingchun/`
-
-## Development Workflow
-
-### 1. Set Up Environment
-
-See [INSTALL.md](INSTALL.md) for initial setup.
-
-### 2. Edit Code
-
-**On Host** (Windows/Mac/Linux):
-- Use Cursor/VSCode with WSL extension
-- Edit files in `/home/user/projects/godzilla-evan`
-- Changes auto-sync to container
-
-### 3. Build
-
-**In Container**:
 ```bash
-docker-compose exec app /bin/bash
-cd /app/core/build
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make -j$(nproc)
+# 1. 創建策略檔案
+mkdir -p strategies/my_strategy
+cat > strategies/my_strategy/my_strategy.py << 'PYTHON'
+from kungfu.wingchun import Strategy
+
+class MyStrategy(Strategy):
+    def pre_start(self, context):
+        context.add_account("binance", "test_account")
+        context.subscribe("binance", ["btc_usdt"], InstrumentType.Spot, Exchange.BINANCE)
+    
+    def on_depth(self, context, depth):
+        context.log().info(f"BTC price: {depth.ask_price[0]}")
+PYTHON
+
+# 2. 創建 PM2 配置
+cat > scripts/my_strategy/strategy_my_strategy.json << 'JSON'
+{
+  "apps": [{
+    "name": "strategy_my_strategy",
+    "script": "/app/core/python/dev_run.py",
+    "args": "-l info strategy -n my_strategy -p /app/strategies/my_strategy/my_strategy.py",
+    "env": {"KF_HOME": "/app/runtime"}
+  }]
+}
+JSON
+
+# 3. 啟動策略 (在容器內)
+pm2 start /app/scripts/my_strategy/strategy_my_strategy.json
+pm2 logs my_strategy
 ```
 
-**Build Types**:
-- `Release`: Optimized (-O3)
-- `Debug`: Debug symbols (-g)
-- `RelWithDebInfo`: Optimized + debug symbols
+**詳細指南**: [`modules/strategy_framework.md`](../modules/strategy_framework.md)
 
-### 4. Test
+---
+
+### 2. 修改 C++ 核心
 
 ```bash
-# Unit tests (if available)
+# 在容器內編譯
 cd /app/core/build
-ctest
-
-# Integration test - run a strategy
-kfc strategy run --path /app/strategies/helloworld
-```
-
-### 5. Debug
-
-**GDB**:
-```bash
-# Build with debug symbols
-cd /app/core/build
-cmake -DCMAKE_BUILD_TYPE=Debug ..
 make -j$(nproc)
 
-# Run under GDB
-gdb --args ./your_binary
+# 驗證 Python 綁定
+python3 -c "from kungfu.wingchun import Strategy; print('OK')"
 ```
 
-**Logging**:
-```cpp
-// In C++ code
-SPDLOG_INFO("Message: {}", value);
-SPDLOG_ERROR("Error: {}", error);
-```
+**編譯選項**:
+- `Release`: 生產環境 (-O3)
+- `Debug`: 開發除錯 (-O0 -g)
+- `RelWithDebInfo`: 效能分析 (-O3 -g)
 
-**Python**:
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
-```
+**詳細指南**: [`modules/python_bindings.md`](../modules/python_bindings.md)
 
-## Build System
+---
 
-### CMake Structure
-
-```
-core/
-├── CMakeLists.txt           # Root CMake
-├── cpp/
-│   ├── CMakeLists.txt       # C++ projects
-│   ├── yijinjing/
-│   │   └── CMakeLists.txt   # yijinjing lib
-│   └── wingchun/
-│       └── CMakeLists.txt   # wingchun lib
-└── python/
-    └── setup.py             # Python package
-```
-
-### Build Options
+### 3. 除錯
 
 ```bash
-# Release build (default)
-cmake -DCMAKE_BUILD_TYPE=Release ..
+# 查看日誌
+pm2 logs <service_name>
 
-# Debug build
-cmake -DCMAKE_BUILD_TYPE=Debug ..
-
-# Verbose build
-make VERBOSE=1
-```
-
-### Clean Build
-
-```bash
-cd /app/core/build
-rm -rf *
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make -j$(nproc)
-```
-
-## Python Development
-
-### Package Structure
-
-```python
-kungfu/
-├── __init__.py
-├── command/          # CLI commands
-│   ├── __init__.py
-│   └── strategy.py
-├── yijinjing/        # Python bindings
-└── wingchun/         # Python bindings
-```
-
-### Install in Development Mode
-
-```bash
-cd /app/core/python
-pip3 install -e .
-```
-
-Changes to Python files take effect immediately.
-
-### CLI Commands
-
-**Note**: Use `python core/python/dev_run.py` instead of `kfc` in container.
-
-```bash
-# Show help
-python core/python/dev_run.py --help
-
-# Run strategy (use PM2 recommended)
-python core/python/dev_run.py strategy -n hello \
-  -p strategies/helloworld/helloworld.py \
-  -c strategies/conf.json
-
-# Show account info
-python core/python/dev_run.py account -s binance show
-```
-
-## Testing
-
-### Unit Tests
-
-C++ tests use GoogleTest (if implemented):
-
-```bash
-cd /app/core/build
-ctest --output-on-failure
-```
-
-### Strategy Testing
-
-```bash
-# Test helloworld strategy (PM2 recommended)
-cd /app/scripts/binance_test
-pm2 start strategy_hello.json
-
-# Check logs
-pm2 logs strategy:hello
-```
-
-### Manual Testing
-
-```bash
-# Start all services
-cd /app/scripts/binance_test
-bash run.sh start
-
-# Check status
+# 檢查服務狀態
 pm2 list
 
-# Stop all services
-bash graceful_shutdown.sh
+# 查看 Journal 事件
+# (暫無工具,需手動讀取 binary)
 ```
 
-## Coding Standards
+**除錯指南**: [`operations/debugging_guide.md`](../operations/debugging_guide.md)
 
-### C++ Style
+---
 
-- **Standard**: C++17
-- **Formatting**: Follow existing code style
-- **Naming**:
-  - Classes: `PascalCase`
-  - Functions: `snake_case`
-  - Variables: `snake_case`
-  - Constants: `UPPER_CASE`
+## 貢獻指南
 
-Example:
-```cpp
-class JournalWriter {
-public:
-    void write_frame(const Frame& frame);
-private:
-    int64_t frame_count_;
-};
+### Git 工作流
+
+```bash
+# 1. 創建功能分支
+git checkout -b feature/my-feature
+
+# 2. 開發並提交
+git add .
+git commit -m "feat: add my feature"
+
+# 3. 推送並創建 PR
+git push origin feature/my-feature
 ```
 
-### Python Style
+### 提交訊息規範
 
-- **Standard**: PEP 8
-- **Formatting**: 4 spaces (no tabs)
-- **Naming**:
-  - Classes: `PascalCase`
-  - Functions: `snake_case`
-  - Variables: `snake_case`
+使用 Conventional Commits:
+- `feat:` - 新功能
+- `fix:` - Bug 修復
+- `docs:` - 文檔更新
+- `refactor:` - 重構
+- `test:` - 測試
+- `chore:` - 其他維護
 
-Example:
-```python
-class StrategyContext:
-    def on_order(self, order):
-        self.log_order(order)
+**範例**:
 ```
+feat(binance): add futures market support
 
-### Comments
-
-```cpp
-// Single-line comment
-
-/**
- * Multi-line documentation
- * @param param_name Parameter description
- * @return Return value description
- */
-```
-
-## Git Workflow
-
-### Commit Messages
-
-Format:
-```
-<type>: <subject>
-
-<body>
-
-<footer>
-```
-
-Types:
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation
-- `refactor`: Code refactoring
-- `test`: Tests
-- `chore`: Build/tooling
-
-Example:
-```
-feat: add triangular arbitrage strategy
-
-Implement triangular arbitrage detection across three currency pairs.
-Uses yijinjing for event sourcing and wingchun for order execution.
+- Implement /fapi/v1 REST endpoints
+- Add futures WebSocket subscription
+- Update config schema
 
 Closes #123
 ```
 
-### Branching
+---
+
+## 測試
+
+### 單元測試 (C++)
 
 ```bash
-# Create feature branch
-git checkout -b feature/your-feature
+# 編譯測試
+cd /app/core/build
+cmake -DBUILD_TESTS=ON ..
+make tests
 
-# Make changes
-git add .
-git commit -m "feat: your feature"
-
-# Push
-git push origin feature/your-feature
+# 執行測試
+./tests/test_yijinjing
+./tests/test_wingchun
 ```
 
-## Common Tasks
-
-### Add a New Strategy
-
-1. Create strategy file:
-   ```python
-   # strategies/my_strategy/my_strategy.py
-   from kungfu.wingchun.constants import *
-   from pywingchun.constants import Side, InstrumentType, OrderType
-   
-   exchange = Exchange.BINANCE
-   instrument_type = InstrumentType.FFuture
-   
-   def pre_start(context):
-       config = context.get_config()
-       context.subscribe(config["md_source"], [config["symbol"]], 
-                        instrument_type, exchange)
-   
-   def on_depth(context, depth):
-       # Your trading logic here
-       bid = depth.bid_price[0]
-       context.log().info(f"Bid: {bid}")
-   ```
-
-2. Create config file:
-   ```json
-   {
-     "md_source": "binance",
-     "td_source": "binance",
-     "symbol": "btcusdt",
-     "account": "gz_user1"
-   }
-   ```
-
-3. Run via PM2 (recommended):
-   ```bash
-   cd /app/scripts/binance_test
-   # Edit strategy_hello.json, change path to your strategy
-   pm2 start modified_config.json
-   ```
-
-### Add a New Exchange Gateway
-
-1. Create gateway file in `core/cpp/wingchun/gateway/`
-2. Implement `Gateway` interface
-3. Register gateway in CMakeLists.txt
-4. Build and test
-
-### Modify yijinjing Core
-
-1. Edit files in `core/cpp/yijinjing/`
-2. Rebuild:
-   ```bash
-   cd /app/core/build
-   make -j$(nproc)
-   ```
-3. Test changes
-4. Update tests if needed
-
-## Performance Profiling
-
-### CPU Profiling
-
-Use Remotery (included in deps):
-
-```cpp
-#include "Remotery.h"
-
-// In code
-rmt_ScopedCPUSample(FunctionName, 0);
-```
-
-### Memory Profiling
-
-Use Valgrind:
+### 整合測試 (Python)
 
 ```bash
-# Install in container
-apt-get install valgrind
+# 執行策略測試
+python3 -m pytest strategies/tests/
 
-# Run
-valgrind --leak-check=full ./your_binary
+# 回測
+# (暫無框架,需手動實作)
 ```
-
-## Debugging Tips
-
-### Container is Running But Can't Connect
-
-```bash
-docker-compose ps
-docker-compose logs app
-```
-
-### Build Fails with Missing Dependencies
-
-```bash
-# Check if dependencies exist
-ls /app/core/deps
-
-# Rebuild container
-docker-compose up -d --build
-```
-
-### Python Import Errors
-
-```bash
-# Check Python path
-echo $PYTHONPATH
-
-# Reinstall package
-cd /app/core/python
-pip3 install -e .
-```
-
-## Related Documentation
-
-- [INSTALL.md](INSTALL.md) - Environment setup
-- [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture
-- [adr/001-docker.md](adr/001-docker.md) - Docker rationale
-- [adr/002-wsl2.md](adr/002-wsl2.md) - WSL2 rationale
-
-## Getting Help
-
-1. Check [INSTALL.md](INSTALL.md) troubleshooting
-2. Review relevant code in `core/cpp/`
-3. Check logs in `/app/runtime/log/`
-4. Search for similar code patterns
 
 ---
 
-Last Updated: 2025-10-22
+## 新增交易所
 
+### 步驟
+
+1. **創建 Extension 目錄**:
+   ```bash
+   mkdir -p core/extensions/my_exchange
+   ```
+
+2. **實作介面**:
+   ```cpp
+   // marketdata_my_exchange.cpp
+   class MarketDataMyExchange : public MarketData {
+       void subscribe(...) override { ... }
+   };
+   
+   // trader_my_exchange.cpp
+   class TraderMyExchange : public Trader {
+       uint64_t insert_order(...) override { ... }
+       uint64_t cancel_order(...) override { ... }
+   };
+   ```
+
+3. **註冊 Extension**:
+   ```cpp
+   EXTENSION_REGISTRY_MD.register_extension<MarketDataMyExchange>("my_exchange");
+   EXTENSION_REGISTRY_TD.register_extension<TraderMyExchange>("my_exchange");
+   ```
+
+4. **創建配置契約文檔**:
+   ```bash
+   cp .doc/contracts/binance_config_contract.md \
+      .doc/contracts/my_exchange_config_contract.md
+   # 編輯配置格式
+   ```
+
+**參考實作**: [`modules/binance_extension.md`](../modules/binance_extension.md)
+
+---
+
+## 文檔更新
+
+### 修改程式碼後
+
+**遵循 DRY 原則**: 每項資訊只在一處維護
+
+| 修改類型 | 需更新文檔 |
+|---------|-----------|
+| 資料結構 (msg.h) | `contracts/*_object_contract.md` + `CODE_INDEX.md` |
+| API (context.cpp) | `contracts/strategy_context_api.md` |
+| 生命週期 (runner.cpp) | `modules/strategy_framework.md` |
+| Python 綁定 | `modules/python_bindings.md` |
+| 配置格式 | `config/CONFIG_REFERENCE.md` |
+| 架構決策 | 新增 `adr/00X-decision-name.md` |
+
+**驗證工具**:
+```bash
+# 驗證程式碼引用
+python3 .doc/operations/scripts/verify_code_refs.py
+
+# 驗證連結
+python3 .doc/operations/scripts/check_links.py
+```
+
+**詳細指南**: [`NAVIGATION.md#文檔維護指南`](../NAVIGATION.md#六文檔維護指南)
+
+---
+
+## 常見問題
+
+### Q: 如何在本機除錯 Python 策略?
+
+**A**: 所有開發必須在 Docker 容器內,使用 PM2 + logs:
+```bash
+docker exec -it godzilla-dev bash
+cd /app/strategies/my_strategy
+# 添加 context.log().info(...) 到策略
+pm2 restart my_strategy
+pm2 logs my_strategy
+```
+
+### Q: 如何測試 C++ 更改?
+
+**A**: 在容器內重新編譯並重啟服務:
+```bash
+docker exec -it godzilla-dev bash -c "cd /app/core/build && make -j\$(nproc)"
+docker exec godzilla-dev pm2 restart all
+```
+
+### Q: 如何清除 Journal 重新開始?
+
+**A**: 刪除 journal 檔案 (僅開發環境):
+```bash
+docker exec godzilla-dev bash -c "find ~/.config/kungfu/app/ -name '*.journal' | xargs rm -f"
+```
+
+---
+
+## 延伸閱讀
+
+### 入門
+- [`NAVIGATION.md`](../NAVIGATION.md) - 任務導向導航
+- [`operations/QUICK_START.md`](../operations/QUICK_START.md) - 快速指令參考
+
+### 架構
+- [`modules/yijinjing.md`](../modules/yijinjing.md) - 事件溯源
+- [`modules/wingchun.md`](../modules/wingchun.md) - 交易引擎
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) - 系統架構概覽
+
+### API
+- [`contracts/strategy_context_api.md`](../contracts/strategy_context_api.md) - Context API 參考
+- [`contracts/order_object_contract.md`](../contracts/order_object_contract.md) - Order 物件
+
+---
+
+**最後更新**: 2025-12-01  
+**預估 Token**: ~1000

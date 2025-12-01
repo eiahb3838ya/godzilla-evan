@@ -69,7 +69,7 @@ order.volume_traded # 已成交量 (≤ volume)
 1. `modules/binance_extension.md` - REST/WebSocket 實作細節
 2. `config/CONFIG_REFERENCE.md` - 配置檔檢查清單與安全指南
 3. `config/NAMING_CONVENTIONS.md` - 帳號與交易對命名規範
-4. `archive/TESTNET.md` - 測試網設定與驗證
+4. `operations/TESTNET.md` - 測試網設定與驗證
 
 **Token 預算**: ~22k
 **常見原因**: API key 錯誤、網路問題、市場類型配置錯誤
@@ -177,7 +177,7 @@ order.volume_traded # 已成交量 (≤ volume)
 | **modules/yijinjing.md** | ✅ 已驗證 | 2025-11-10 | - | 核心機制穩定 |
 | **config/CONFIG_REFERENCE.md** | ✅ 已驗證 | 2025-12-01 | - | 統一配置參考 |
 | **config/NAMING_CONVENTIONS.md** | ✅ 已驗證 | 2025-12-01 | - | 命名規範統一 |
-| **archive/TESTNET.md** | ✅ 已驗證 | 2025-11-20 | - | 測試網流程完整 |
+| **operations/TESTNET.md** | ✅ 已驗證 | 2025-11-20 | - | 測試網流程完整 |
 
 **圖例**:
 - ✅ 已驗證: 文檔與程式碼同步,可放心使用

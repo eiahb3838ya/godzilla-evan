@@ -104,7 +104,7 @@ def on_order(self, context, order):
 | 模組 | 檔案 | 關鍵行號 | 說明 | 相關文檔 |
 |------|------|---------|------|---------|
 | **配置結構** | `include/common.h` | 18-71 | `BinanceCommonConfig` 定義 | contracts/binance_config_contract.md |
-| **Testnet/Mainnet** | `include/common.h` | 硬編碼 | 編譯時決定,無法執行時切換 | archive/TESTNET.md |
+| **Testnet/Mainnet** | `include/common.h` | 硬編碼 | 編譯時決定,無法執行時切換 | operations/TESTNET.md |
 | **MarketData 實作** | `src/marketdata_binance.cpp` | 全檔案 | WebSocket 訂閱與解析 | modules/binance_extension.md#marketdata |
 | **Trader 實作** | `src/trader_binance.cpp` | 全檔案 | REST API 下單與查詢 | modules/binance_extension.md#trader |
 | **市場切換邏輯** | `src/trader_binance.cpp` | 98-150 (參考) | `enable_spot` / `enable_futures` 實作 | adr/004-binance-market-toggle.md |

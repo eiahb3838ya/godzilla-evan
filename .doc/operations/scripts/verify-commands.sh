@@ -116,12 +116,22 @@ test_documentation() {
     done
 
     # Check archive docs
-    archive_docs=("TESTNET.md" "INSTALL.md" "HACKING.md" "LOG_LOCATIONS.md")
+    archive_docs=("INSTALL.md" "HACKING.md" "ARCHITECTURE.md")
     for doc in "${archive_docs[@]}"; do
         if [ -f ".doc/archive/$doc" ]; then
             pass ".doc/archive/$doc exists"
         else
             fail ".doc/archive/$doc missing"
+        fi
+    done
+
+    # Check operations docs (including moved from archive)
+    ops_docs_extended=("TESTNET.md" "LOG_LOCATIONS.md")
+    for doc in "${ops_docs_extended[@]}"; do
+        if [ -f ".doc/operations/$doc" ]; then
+            pass ".doc/operations/$doc exists"
+        else
+            fail ".doc/operations/$doc missing"
         fi
     done
 
