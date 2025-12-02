@@ -1,365 +1,164 @@
-# CLAUDE.md
+# CLAUDE.md - 系統元認知協議
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## 系統本質
 
-## Context Loading
-
-**This project has a comprehensive documentation system in `.doc/`**. Before starting any work:
+低延遲加密貨幣交易系統,三層架構:
 
 ```
-follow .doc/START.md
-```
-
-This loads ~113k tokens of structured documentation covering:
-- System architecture (Yijinjing event sourcing + Wingchun trading framework)
-- API contracts and data structures
-- Module interactions and lifecycle flows
-- Configuration management
-- Operational procedures
-
-**Language**: User prefers 繁體中文 (zh-TW) unless otherwise specified. The `.doc/START.md` enforces this.
-
-**Documentation Priority**: `.doc/` > `core/` source code > `strategies/` examples
-
-## Architecture Overview
-
-This is a **low-latency cryptocurrency trading system** with three layers:
-
-```
-Python Strategy Layer (User Logic)
+Python Strategy Layer (策略邏輯)
          ↓ pybind11
-Wingchun (C++) - Strategy runtime, order management, position tracking
+Wingchun (C++) - 策略執行、訂單管理、持倉追蹤
          ↓
-Yijinjing (C++) - Event sourcing journal (~50μs latency)
+Yijinjing (C++) - 事件溯源 Journal (~50μs 延遲)
          ↓
 Exchange Gateways - Binance REST/WebSocket
 ```
 
-**Key Concepts**:
-- **Journal**: Append-only event log for all trading events (orders, fills, market data)
-- **Event Sourcing**: Complete audit trail with time-travel debugging capability
-- **Strategy Callbacks**: `pre_start()` → `on_depth()` / `on_order()` / `on_transaction()` → `pre_stop()`
-- **Single-threaded**: All callbacks execute sequentially (<1ms each)
+**核心特性**: 事件驅動、單執行緒策略、完整審計日誌
 
-## Build Commands
+---
 
-**In Docker Container**:
+## 溝通協議
+
+**語言**: 繁體中文 (zh-TW)
+
+**文檔優先序**: `.doc/` > `core/` 源碼 > `strategies/` 範例
+
+**導航入口**: `.doc/NAVIGATION.md` (必先讀!)
+
+---
+
+## 系統級鐵律 (違反=崩潰)
+
+### 1. 容器隔離原則
+❌ **絕不在 host 執行服務**
 ```bash
-# Enter container
-docker-compose exec app /bin/bash
+# 錯誤示範
+python3 dev_run.py  # ❌ 找不到依賴!
 
-# Initial build
-cd /app/core/build
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make -j$(nproc)
-
-# Rebuild after changes
-make -j$(nproc)
-
-# Clean build
-rm -rf /app/core/build/*
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make -j$(nproc)
+# 正確做法
+docker exec godzilla-dev pm2 start ...  # ✅
 ```
 
-**Build Types**:
-- `Release`: -O3 optimization (production)
-- `Debug`: -O0 -g (debugging)
-- `RelWithDebInfo`: -O3 -g (profiling)
-
-**Python bindings**: Automatically built with C++ targets, output to `build/kfc/python/`
-
-## Running Strategies
-
-### ⚠️ CRITICAL: Always Use Docker + PM2
-
-**This project MUST run inside Docker container with PM2 process manager.**
-
-DO NOT run services directly on host machine. DO NOT use manual terminal commands for production/testing.
-
-### Standard Startup Procedure
-
-#### Step 1: Verify Docker Container is Running
-
+### 2. 進程管理原則
+❌ **絕不手動啟動進程**
 ```bash
-# Check container status
-docker ps | grep godzilla-dev
+# 錯誤示範
+nohup python3 dev_run.py &  # ❌ 無法追蹤日誌!
 
-# If not running, start it
-docker-compose up -d
+# 正確做法
+docker exec godzilla-dev pm2 start <config>.json  # ✅
 ```
 
-#### Step 2: Use PM2 Inside Docker Container
+### 3. 啟動時序原則
+**必須按順序啟動** (每步間隔 5 秒):
+```
+Master → (5s) → Ledger → (5s) → MD → (5s) → TD → (5s) → Strategy
+```
 
-**Method 1: Quick Start (Recommended)**
+**違反後果**: 服務無法註冊、連線失敗、事件遺失
 
-From **host machine**:
+### 4. 密鑰安全原則
+❌ **絕不提交以下配置項**:
+- `access_key`
+- `secret_key`
+- `passphrase`
+
+**檢查方法**: `git log -S "access_key" --all` (應無結果)
+
+---
+
+## 文檔系統使用協議
+
+### AI 學習規則
+
+1. **冷啟動**:
+   - 先讀 `.doc/NAVIGATION.md` 建立知識地圖
+   - 理解「任務→文檔」映射關係
+   - 理解文檔依賴圖 (基礎層→核心層→應用層)
+
+2. **任務導向載入**:
+   - 根據用戶意圖查詢 NAVIGATION.md 推薦文檔
+   - 按推薦順序載入 2-3 個文檔 (控制在 15-20k tokens)
+   - 避免一次載入超過 30k tokens
+
+3. **程式碼定位**:
+   - 需要檔案行號 → 查 `.doc/CODE_INDEX.md`
+   - 需要操作指令 → 查 `.doc/operations/QUICK_START.md`
+   - 需要配置說明 → 查 `.doc/config/config_usage_map.md`
+
+4. **禁止行為**:
+   - ❌ 跳過 NAVIGATION.md 直接猜測檔案路徑
+   - ❌ 引用未實際讀取的文檔內容
+   - ❌ 一次性全載入所有文檔 (除非真的需要全局理解)
+
+### 快速定位鉤子
+
+| 需求 | 文檔入口 |
+|------|---------|
+| **開發新策略** | NAVIGATION.md#開發新策略 |
+| **除錯問題** | NAVIGATION.md#除錯Binance問題 |
+| **服務部署** | NAVIGATION.md#部署與服務管理 |
+| **理解架構** | NAVIGATION.md#理解事件流與架構 |
+| **新增交易所** | NAVIGATION.md#新增交易所Gateway |
+| **修改資料結構** | NAVIGATION.md#修改核心資料結構 |
+| **操作指令** | operations/QUICK_START.md |
+| **程式碼錨點** | CODE_INDEX.md |
+
+---
+
+## Token 預算管理
+
+**冷啟動成本**: CLAUDE.md (本文件) + NAVIGATION.md ≈ **800 tokens**
+
+**一般任務**: 再載入 2-3 個文檔 ≈ **15-20k tokens**
+
+**複雜任務**: 先載入基礎層 (yijinjing + wingchun),再載入任務相關文檔 ≈ **25-35k tokens**
+
+**極限**: 全量載入 36 個文檔 ≈ **576k tokens** (僅在必要時)
+
+---
+
+## 常見陷阱速查
+
+| 陷阱 | 正確理解 | 相關文檔 |
+|------|---------|---------|
+| `bid_price[0]` 是最差價 | `bid_price[0]` 是**最佳買價**(最高) | CODE_INDEX.md#Depth |
+| `ex_order_id` 立即有值 | 只有 `status=Submitted` 後才有值 | CODE_INDEX.md#Order |
+| 回調可執行長時間運算 | 所有回調必須 <1ms (單執行緒) | NAVIGATION.md#開發新策略 |
+| 容器內路徑是 `/home/...` | 容器內路徑都是 `/app/` 開頭 | operations/QUICK_START.md |
+| Testnet 可執行時切換 | Testnet/Mainnet 是編譯時決定 | CODE_INDEX.md#Binance |
+
+---
+
+## 快速啟動 (一鍵)
+
 ```bash
-# Start all services (master, ledger, md, td)
+# 啟動所有服務
 docker exec -it godzilla-dev bash -c "cd /app/scripts/binance_test && ./run.sh start"
 
-# Check status
+# 查看狀態
 docker exec godzilla-dev pm2 list
 
-# View logs
+# 查看日誌
 docker exec -it godzilla-dev pm2 logs
-
-# Stop all services
-docker exec -it godzilla-dev bash -c "cd /app/scripts/binance_test && ./run.sh stop"
 ```
 
-**Method 2: Step-by-Step (For Learning)**
+**詳細指令**: 見 `.doc/operations/QUICK_START.md`
 
-Enter container first:
+---
+
+## 文檔維護
+
+修改程式碼後,確認相關 `.doc/` 文檔已同步更新:
+
+- 資料結構變更 → `contracts/*_object_contract.md` + `CODE_INDEX.md`
+- API 變更 → `contracts/strategy_context_api.md`
+- 配置變更 → `config/config_usage_map.md`
+- 架構決策 → 新增 `adr/00X-decision-name.md`
+
+**驗證工具**:
 ```bash
-docker exec -it godzilla-dev bash
+python3 .doc/operations/scripts/verify_code_refs.py  # 檢查程式碼引用
+python3 .doc/operations/scripts/check_links.py       # 檢查連結完整性
 ```
-
-Then inside container:
-```bash
-cd /app/scripts/binance_test
-
-# Start services in order
-pm2 start master.json    # Wait 5 seconds
-pm2 start ledger.json    # Wait 5 seconds
-pm2 start md_binance.json    # Wait 5 seconds
-pm2 start td_binance.json    # Wait 5 seconds
-
-# Start your strategy (example)
-cd /app/scripts/demo_future
-pm2 start strategy_demo_future.json
-```
-
-#### Step 3: Monitor Services
-
-```bash
-# List all processes
-docker exec godzilla-dev pm2 list
-
-# View specific service logs
-docker exec -it godzilla-dev pm2 logs master
-docker exec -it godzilla-dev pm2 logs td_binance
-docker exec -it godzilla-dev pm2 logs strategy_demo_future
-
-# Monitor real-time
-docker exec -it godzilla-dev pm2 monit
-```
-
-### Service Startup Order (Critical)
-
-**Must follow this order with 5-second delays**:
-
-```
-1. Master      (service registry, must start first)
-   ↓ wait 5s
-2. Ledger      (account/position tracking)
-   ↓ wait 5s
-3. MD Gateway  (market data from exchanges)
-   ↓ wait 5s
-4. TD Gateway  (trading execution)
-   ↓ wait 5s
-5. Strategy    (your trading logic)
-```
-
-### Running Custom Strategies
-
-To run your own strategy, create PM2 config in `scripts/<your_strategy>/`:
-
-```json
-{
-  "apps": [{
-    "name": "strategy_<name>",
-    "cwd": "/app",
-    "script": "/app/core/python/dev_run.py",
-    "exec_interpreter": "python3",
-    "args": "-l info strategy -n <name> -p /app/strategies/<name>/<name>.py -c /app/strategies/<name>/config.json",
-    "watch": false,
-    "env": {
-      "KF_HOME": "/app/runtime"
-    }
-  }]
-}
-```
-
-Then start it:
-```bash
-docker exec godzilla-dev pm2 start /app/scripts/<your_strategy>/strategy_<name>.json
-```
-
-### Cleanup Before Fresh Start
-
-```bash
-# Stop all PM2 processes
-docker exec godzilla-dev pm2 stop all
-docker exec godzilla-dev pm2 delete all
-
-# Clear journal history (development only!)
-docker exec godzilla-dev bash -c "find ~/.config/kungfu/app/ -name '*.journal' | xargs rm -f"
-```
-
-### Why Docker + PM2?
-
-1. **Isolation**: Consistent environment across development/production
-2. **Process Management**: PM2 auto-restarts on crashes, manages logs
-3. **Correct Paths**: All paths use `/app` prefix inside container
-4. **Dependencies**: All C++ libraries and Python packages pre-installed
-5. **Monitoring**: PM2 provides CPU/memory metrics and log aggregation
-
-### Reference
-
-- PM2 Guide: `.doc/90_operations/pm2_startup_guide.md`
-- Docker Setup: `.doc/00_index/INSTALL.md`
-- Service Architecture: `.doc/00_index/ARCHITECTURE.md`
-
-## Code Structure Notes
-
-**C++ Core** (`core/cpp/`):
-- `yijinjing/`: Journal system (no strategy logic)
-- `wingchun/strategy/`: Strategy execution engine (`runner.cpp` routes events to Python callbacks)
-- `wingchun/broker/`: Order management and routing
-- `wingchun/book/`: Position and PnL tracking
-- `wingchun/pybind/`: pybind11 bindings (maps C++ structs/enums to Python)
-
-**Extensions** (`core/extensions/`):
-- Each exchange has its own directory (e.g., `binance/`)
-- Must implement `MarketData` and `Trader` abstract classes
-- Registered in `EXTENSION_REGISTRY_MD` / `EXTENSION_REGISTRY_TD`
-
-**Python Layer** (`core/python/kungfu/`):
-- `command/`: CLI entry points (master, ledger, md, td, strategy)
-- User strategies import from `kungfu.wingchun` (bound C++ classes)
-
-## Critical Files
-
-When modifying these, update corresponding `.doc/` files (see `.doc/UPDATE.md`):
-
-**Data structures** (`core/cpp/wingchun/include/kungfu/wingchun/msg.h`):
-- `Order` (line 666-730): Order state machine
-- `Depth` (line 242-302): Market depth (10 levels)
-- `Position` (line 1000-1071): Holdings and PnL
-- `Asset` (line 947-998): Cash balances
-
-**Strategy lifecycle** (`core/cpp/wingchun/src/strategy/runner.cpp`):
-- Lines 55-194: Event subscriptions and callback routing
-- Lines 66-76: Depth events
-- Lines 124-141: Order events (routed by `strategy_id`)
-
-**Python bindings** (`core/cpp/wingchun/pybind/pybind_wingchun.cpp`):
-- Lines 264-319: Enum bindings (Side, OrderStatus, etc.)
-- Lines 516-547: Order struct binding
-- Lines 719-743: Context API binding
-
-## Configuration
-
-**Location**: `~/.config/kungfu/app/runtime/config/`
-
-**Structure**:
-```
-config/
-├── md/
-│   └── binance/config.json          # Market data config
-└── td/
-    └── binance/<account>.json       # Trading account config (API keys)
-```
-
-**NEVER commit**: `access_key`, `secret_key`, `passphrase` (see `.doc/40_config/dangerous_keys.md`)
-
-**Testnet vs Mainnet**: Hardcoded in `core/extensions/binance/include/common.h:18-71` (not runtime configurable)
-
-## Documentation Updates
-
-After code changes, run:
-```
-follow .doc/UPDATE.md
-```
-
-This automates:
-1. Detecting which `.doc/` files need updates
-2. Updating contracts (`30_contracts/`) for API changes
-3. Updating modules (`10_modules/`) for implementation changes
-4. Updating interactions (`20_interactions/`) for flow changes
-5. Updating operations (`90_operations/`) for CLI changes
-
-**Verification scripts**:
-```bash
-# Validate code references (file:line format)
-python3 .doc/90_operations/scripts/verify_code_refs.py
-
-# Check markdown links
-python3 .doc/90_operations/scripts/check_links.py
-
-# Update token estimates
-python3 .doc/90_operations/scripts/estimate_tokens.py
-```
-
-## Development Workflow
-
-1. **Load context**: `follow .doc/START.md`
-2. **Make changes**: Edit on host, build in container
-3. **Test**: Run affected services (master → ledger → md → td → strategy)
-4. **Update docs**: `follow .doc/UPDATE.md`
-5. **Verify**: Run validation scripts
-
-## Key Constraints
-
-- **Single-threaded strategy execution**: Callbacks must complete in <1ms
-- **Journal is append-only**: Cannot delete events (only replay from specific time)
-- **Order IDs are local**: `order_id` is strategy-local, `ex_order_id` is exchange-assigned
-- **Depth arrays are fixed-size**: 10 levels max, sparse levels filled with zeros
-- **Python/C++ boundary**: pybind11 overhead ~5-10μs per callback
-
-## Common Pitfalls
-
-1. **❌ Running outside Docker**: NEVER run `python3 dev_run.py` directly on host. ALWAYS use `docker exec godzilla-dev`
-2. **❌ Not using PM2**: NEVER manage processes manually. ALWAYS use PM2 for process management
-3. **❌ Wrong startup order**: Master must start first, then Ledger, then gateways, then strategies (5-second delays)
-4. **❌ Wrong paths**: Inside container, all paths start with `/app/` not `/home/huyifan/projects/godzilla-evan/`
-5. **Depth indexing**: `bid_price[0]` is **best** bid (highest), not worst
-6. **Order state**: `ex_order_id` is empty until exchange confirms (status=Submitted)
-7. **Config files**: Must match CLI `-a` account name exactly
-8. **Journal pollution**: `CLEAR_JOURNAL=1` deletes all history (dev only)
-
-## Quick Reference Commands
-
-### Essential Commands (Copy-Paste Ready)
-
-```bash
-# Start all services
-docker exec -it godzilla-dev bash -c "cd /app/scripts/binance_test && ./run.sh start"
-
-# Check status
-docker exec godzilla-dev pm2 list
-
-# View logs
-docker exec -it godzilla-dev pm2 logs
-
-# Stop all services
-docker exec godzilla-dev pm2 stop all && docker exec godzilla-dev pm2 delete all
-
-# Enter container
-docker exec -it godzilla-dev bash
-```
-
-### Troubleshooting
-
-```bash
-# Container not running?
-docker-compose up -d
-
-# Services keep restarting?
-docker exec -it godzilla-dev pm2 logs --err --lines 100
-
-# Clear everything and start fresh
-docker exec godzilla-dev pm2 stop all
-docker exec godzilla-dev pm2 delete all
-docker exec godzilla-dev bash -c "find ~/.config/kungfu/app/ -name '*.journal' | xargs rm -f"
-```
-
-## Documentation Reference
-
-- Architecture: `.doc/00_index/ARCHITECTURE.md`
-- Strategy development: `.doc/10_modules/strategy_framework.md`
-- API reference: `.doc/30_contracts/strategy_context_api.md`
-- Order lifecycle: `.doc/20_interactions/order_lifecycle_flow.md`
-- PM2 operations: `.doc/90_operations/pm2_startup_guide.md`
-- CLI commands: `.doc/90_operations/cli_operations_guide.md`

@@ -130,7 +130,7 @@ cat strategies/demo_future/config.json | grep symbol
 "symbol": "btc-usdt"   # 連字符
 ```
 
-**如果格式錯誤**: 修正為 `"btc_usdt"` 格式，見 [Symbol 命名規範](../40_config/symbol_naming_convention.md)
+**如果格式錯誤**: 修正為 `"btc_usdt"` 格式，見 [Symbol 命名規範](../40_config/NAMING_CONVENTIONS.md#二交易對命名規範)
 
 #### Step 2: 驗證訂閱註冊
 
@@ -323,7 +323,7 @@ def pre_start(context):
         raise ValueError(
             f"Invalid symbol format: '{symbol}'. "
             f"Expected format: 'base_quote' (e.g., 'btc_usdt'). "
-            f"See .doc/40_config/symbol_naming_convention.md"
+            f"See .doc/40_config/NAMING_CONVENTIONS.md#二交易對命名規範"
         )
 
     if symbol != symbol.lower():
@@ -370,7 +370,7 @@ sleep 5
 pm2 start strategy:demo_future
 ```
 
-詳見: [帳號命名機制](../40_config/account_naming_convention.md)
+詳見: [帳號命名機制](../40_config/NAMING_CONVENTIONS.md#一帳號命名規範)
 
 ---
 
@@ -662,8 +662,8 @@ stat /app/core/build/kfc/python/kungfu/wingchun/*.so | grep Modify
 
 ## Related Documentation
 
-- [Symbol 命名規範](../40_config/symbol_naming_convention.md) - Symbol 格式詳細說明
-- [帳號命名機制](../40_config/account_naming_convention.md) - Account 名稱格式
+- [Symbol 命名規範](../40_config/NAMING_CONVENTIONS.md#二交易對命名規範) - Symbol 格式詳細說明
+- [帳號命名機制](../40_config/NAMING_CONVENTIONS.md#一帳號命名規範) - Account 名稱格式
 - [CLI 操作指南](cli_operations_guide.md) - 服務啟動與管理
 - [PM2 啟動指南](pm2_startup_guide.md) - PM2 使用方法
 

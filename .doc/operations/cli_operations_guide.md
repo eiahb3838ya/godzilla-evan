@@ -649,7 +649,7 @@ kfc account -s binance add
 account_id = ctx.source + '_' + answers[ctx.schema['key']]  # "binance_my_account"
 ```
 
-詳細說明請參閱 [帳號命名機制](../40_config/account_naming_convention.md)。
+詳細說明請參閱 [帳號命名機制](../40_config/NAMING_CONVENTIONS.md#一帳號命名規範)。
 
 **Solution Method 2 - Python Script**:
 ```python
@@ -721,7 +721,7 @@ python3 core/python/dev_run.py -l info strategy \
 ## Related Documentation
 
 ### Configuration
-- [Config Usage Map](../40_config/config_usage_map.md) - Configuration file locations
+- [Config Usage Map](../40_config/CONFIG_REFERENCE.md) - Configuration file locations
 - [Binance Config Contract](../30_contracts/binance_config_contract.md) - Exchange configuration
 
 ### Operations

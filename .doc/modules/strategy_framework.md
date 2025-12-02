@@ -217,7 +217,7 @@ context.subscribe(
 **IMPORTANT - Symbol Format:**
 - ✓ Correct: `"btc_usdt"`, `"eth_usdt"` (lowercase with underscore)
 - ✗ Wrong: `"btcusdt"`, `"BTCUSDT"`, `"BTC_USDT"`, `"btc-usdt"`
-- See [Symbol Naming Convention](../40_config/symbol_naming_convention.md) for details
+- See [Symbol Naming Convention](../40_config/NAMING_CONVENTIONS.md#二交易對命名規範) for details
 
 ### Order Management
 
@@ -301,7 +301,7 @@ config = context.get_config()  # Now has updated values
   1. `IndexError` when placing orders ([book.py:122-123](../../core/python/kungfu/wingchun/book/book.py#L122-L123))
   2. Silent subscription failure (strategy won't receive market data)
   3. Requires C++ rebuild to fix
-- See [Symbol Naming Convention](../40_config/symbol_naming_convention.md) for detailed explanation
+- See [Symbol Naming Convention](../40_config/NAMING_CONVENTIONS.md#二交易對命名規範) for detailed explanation
 
 ### State Management
 

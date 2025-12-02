@@ -1247,7 +1247,7 @@ void on_depth(Context_ptr ctx, const Depth& depth) {
 - [binance_extension.md](binance_extension.md) - Example gateway implementation for Binance (to be created)
 - [../20_interactions/trading_flow.md](../20_interactions/trading_flow.md) - Complete order execution flow (to be created)
 - [../20_interactions/event_flow.md](../20_interactions/event_flow.md) - System-wide event propagation (to be created)
-- [../40_config/config_usage_map.md](../40_config/config_usage_map.md) - Configuration for wingchun components
+- [../40_config/CONFIG_REFERENCE.md](../40_config/CONFIG_REFERENCE.md) - Configuration for wingchun components
 - [../00_index/ARCHITECTURE.md](../00_index/ARCHITECTURE.md) - Overall system architecture
 
 ## Changelog
