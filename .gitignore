@@ -42,3 +42,28 @@ core/python/extensions/binance/
 .vscode/
 *.swp
 
+# ===== hf-live Submodule 配置 =====
+# 策略: 僅跟蹤 hf-live/.git 和 commit hash,不上傳源碼
+
+# 不上傳 hf-live 源碼 (除 README)
+hf-live/include/
+hf-live/adapter/
+hf-live/_comm/
+hf-live/app_live/
+hf-live/factors/
+hf-live/models/
+hf-live/*.cpp
+hf-live/*.h
+hf-live/CMakeLists.txt
+hf-live/Makefile
+hf-live/.gitignore
+
+# 不上傳編譯產物 (除非需要分發二進制)
+hf-live/build/*.o
+hf-live/build/*.d
+hf-live/build/CMakeFiles/
+hf-live/build/CMakeCache.txt
+
+# 可選上傳編譯好的 .so (取決於分發策略)
+# hf-live/build/libsignal.so
+

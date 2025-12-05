@@ -213,6 +213,16 @@ public:
     void on_trade(strategy::Context_ptr context, const Trade &trade) override
     {PYBIND11_OVERLOAD(void, strategy::Strategy, on_trade, context, trade); }
 
+    void on_factor(strategy::Context_ptr context, const std::string &symbol, long long timestamp, const std::vector<double> &values) override
+    {
+        py::gil_scoped_acquire acquire;
+        py::list py_values;
+        for (const auto& v : values) {
+            py_values.append(v);
+        }
+        PYBIND11_OVERLOAD(void, strategy::Strategy, on_factor, context, symbol, timestamp, py_values);
+    }
+
 };
 
 PYBIND11_MODULE(pywingchun, m)
@@ -764,6 +774,9 @@ PYBIND11_MODULE(pywingchun, m)
             .def("on_trade", &strategy::Strategy::on_trade)
             .def("on_position", &strategy::Strategy::on_position)
             .def("on_union_response", &strategy::Strategy::on_union_response)
+            .def("on_factor", &strategy::Strategy::on_factor,
+                 py::arg("context"), py::arg("symbol"), py::arg("timestamp"), py::arg("values"),
+                 "Factor callback")
             .def("get_uid", &strategy::Strategy::get_uid)
             ;
 

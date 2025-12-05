@@ -6,6 +6,8 @@
  */
 
 #include <utility>
+#include <cstdlib>
+#include <dlfcn.h>
 #include <fmt/format.h>
 #include <kungfu/yijinjing/log/setup.h>
 #include <kungfu/yijinjing/time.h>
@@ -28,6 +30,20 @@ namespace kungfu
                            bool low_latency)
                     : apprentice(location::make(m, category::STRATEGY, group, name, std::move(locator)), low_latency)
             {}
+
+            Runner::~Runner()
+            {
+                if (signal_destroy_ && signal_engine_handle_)
+                {
+                    signal_destroy_(signal_engine_handle_);
+                    signal_engine_handle_ = nullptr;
+                }
+                if (signal_lib_handle_)
+                {
+                    dlclose(signal_lib_handle_);
+                    signal_lib_handle_ = nullptr;
+                }
+            }
 
             Context_ptr Runner::make_context()
             {
@@ -52,6 +68,84 @@ namespace kungfu
                 strategies_.insert(std::make_pair(uid, strategy));
             }
 
+            void Runner::load_signal_library()
+            {
+                // 從配置讀取路徑 (目前使用硬編碼,未來可從環境變數或配置文件讀取)
+                const char* lib_path_env = std::getenv("SIGNAL_LIB_PATH");
+                std::string lib_path = lib_path_env ? lib_path_env : "/app/hf-live/build/libsignal.so";
+
+                SPDLOG_INFO("Attempting to load signal library from: {}", lib_path);
+
+                // dlopen 加載動態庫
+                signal_lib_handle_ = dlopen(lib_path.c_str(), RTLD_LAZY);
+                if (!signal_lib_handle_)
+                {
+                    SPDLOG_WARN("Failed to load signal library: {}", dlerror());
+                    return;
+                }
+
+                // 加載函數符號
+                signal_create_ = (signal_create_fn)dlsym(signal_lib_handle_, "signal_create");
+                signal_register_callback_ = (signal_register_callback_fn)dlsym(signal_lib_handle_, "signal_register_callback");
+                signal_on_data_ = (signal_on_data_fn)dlsym(signal_lib_handle_, "signal_on_data");
+                signal_destroy_ = (signal_destroy_fn)dlsym(signal_lib_handle_, "signal_destroy");
+
+                // 檢查必要函數是否加載成功
+                if (!signal_create_ || !signal_on_data_)
+                {
+                    SPDLOG_ERROR("Failed to load required signal functions (signal_create: {}, signal_on_data: {})",
+                                 signal_create_ != nullptr, signal_on_data_ != nullptr);
+                    dlclose(signal_lib_handle_);
+                    signal_lib_handle_ = nullptr;
+                    signal_create_ = nullptr;
+                    signal_register_callback_ = nullptr;
+                    signal_on_data_ = nullptr;
+                    signal_destroy_ = nullptr;
+                    return;
+                }
+
+                // 創建 signal engine (空配置)
+                signal_engine_handle_ = signal_create_("{}");
+                if (!signal_engine_handle_)
+                {
+                    SPDLOG_ERROR("signal_create returned null, engine creation failed");
+                    dlclose(signal_lib_handle_);
+                    signal_lib_handle_ = nullptr;
+                    signal_create_ = nullptr;
+                    signal_register_callback_ = nullptr;
+                    signal_on_data_ = nullptr;
+                    signal_destroy_ = nullptr;
+                    return;
+                }
+
+                // 註冊因子回調 (使用 lambda 捕獲 this)
+                if (signal_register_callback_)
+                {
+                    signal_register_callback_(signal_engine_handle_,
+                        [](const char* symbol, long long ts, const double* values, int count, void* ud) {
+                            Runner* self = static_cast<Runner*>(ud);
+                            self->on_factor_callback(symbol, ts, values, count);
+                        },
+                        this);
+                    SPDLOG_INFO("Signal callback registered successfully");
+                }
+
+                SPDLOG_INFO("Signal library loaded successfully: {}", lib_path);
+            }
+
+            void Runner::on_factor_callback(const char* symbol, long long timestamp, const double* values, int count)
+            {
+                SPDLOG_DEBUG("Received factor for {} @ {}: count={}", symbol, timestamp, count);
+
+                // 調用所有策略的 on_factor 回調
+                std::vector<double> factor_values(values, values + count);
+                for (auto& [id, strategy] : strategies_)
+                {
+                    context_->set_current_strategy_index(id);
+                    strategy->on_factor(context_, std::string(symbol), timestamp, factor_values);
+                }
+            }
+
             void Runner::on_start()
             {
                 context_ = make_context();
@@ -72,6 +166,12 @@ namespace kungfu
                         if (context_->is_subscribed("depth", strategy.first, event->data<Depth>())) {
                             strategy.second->on_depth(context_, event->data<Depth>());
                         }
+                    }
+
+                    // 轉發到 signal library (type=101 for Depth)
+                    if (signal_on_data_ && signal_engine_handle_)
+                    {
+                        signal_on_data_(signal_engine_handle_, 101, event->data_address());
                     }
                 });
 
@@ -96,6 +196,12 @@ namespace kungfu
                         if (context_->is_subscribed("trade", strategy.first, event->data<Trade>())) {
                             strategy.second->on_trade(context_, event->data<Trade>());
                         }
+                    }
+
+                    // 轉發到 signal library (type=103 for Trade)
+                    if (signal_on_data_ && signal_engine_handle_)
+                    {
+                        signal_on_data_(signal_engine_handle_, 103, event->data_address());
                     }
                 });
 
@@ -185,6 +291,9 @@ namespace kungfu
                 });
 
                 apprentice::on_start();
+
+                // 加載 signal library (hf-live)
+                load_signal_library();
 
                 for (const auto &strategy : strategies_)
                 {

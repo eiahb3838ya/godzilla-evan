@@ -108,6 +108,8 @@ class Strategy(pywingchun.Strategy):
             impl, 'on_order_action_error', lambda ctx, error: None)
         self._on_union_response = getattr(
             impl, 'on_union_response', lambda ctx, error: None)
+        self._on_factor = getattr(
+            impl, 'on_factor', lambda ctx, symbol, timestamp, values: None)
 
     def __init_book(self):
         location = pyyjj.location(pyyjj.mode.LIVE, pyyjj.category.STRATEGY, self.ctx.group, self.ctx.name,
@@ -308,6 +310,10 @@ class Strategy(pywingchun.Strategy):
 
     def on_trade(self, wc_context, trade):
         self._on_trade(self.ctx, trade)
+
+    def on_factor(self, wc_context, symbol, timestamp, values):
+        """因子回調 - 接收 hf-live 計算的因子值"""
+        self._on_factor(self.ctx, symbol, timestamp, values)
 
     def __insert_order(self, symbol, inst_type, exchange, account, limit_price, volume, order_type, side,
                        time=TimeCondition.GTC, position_side=Direction.Long, reduce_only=False):

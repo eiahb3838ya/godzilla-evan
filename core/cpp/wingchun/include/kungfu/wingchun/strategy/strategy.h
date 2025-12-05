@@ -87,6 +87,13 @@ namespace kungfu
                 virtual void on_union_response(Context_ptr context, const std::string &msg)
                 {};
 
+                //因子數據回調 (hf-live signal library)
+                //@param symbol            交易標的
+                //@param timestamp         時間戳 (納秒)
+                //@param values            因子值陣列
+                virtual void on_factor(Context_ptr context, const std::string &symbol, long long timestamp, const std::vector<double> &values)
+                {};
+
                 //设置策略UID
                 //@param id                策略UID
                 void set_uid(uint32_t id) {

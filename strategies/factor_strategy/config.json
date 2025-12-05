@@ -1,0 +1,19 @@
+{
+  "name": "factor_strategy",
+  "path": "strategies/factor_strategy/run.py",
+  "signal_library_path": "/app/hf-live/build/libsignal.so",
+  "accounts": [
+    {
+      "source": "binance",
+      "id": "demo"
+    }
+  ],
+  "subscriptions": [
+    {
+      "source": "binance",
+      "exchange": "binance",
+      "symbol": "btcusdt",
+      "is_level2": true
+    }
+  ]
+}
