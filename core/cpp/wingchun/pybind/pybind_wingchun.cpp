@@ -216,11 +216,7 @@ public:
     void on_factor(strategy::Context_ptr context, const std::string &symbol, long long timestamp, const std::vector<double> &values) override
     {
         py::gil_scoped_acquire acquire;
-        py::list py_values;
-        for (const auto& v : values) {
-            py_values.append(v);
-        }
-        PYBIND11_OVERLOAD(void, strategy::Strategy, on_factor, context, symbol, timestamp, py_values);
+        PYBIND11_OVERLOAD(void, strategy::Strategy, on_factor, context, symbol, timestamp, values);
     }
 
 };

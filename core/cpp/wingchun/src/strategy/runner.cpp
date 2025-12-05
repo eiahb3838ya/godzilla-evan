@@ -171,7 +171,7 @@ namespace kungfu
                     // 轉發到 signal library (type=101 for Depth)
                     if (signal_on_data_ && signal_engine_handle_)
                     {
-                        signal_on_data_(signal_engine_handle_, 101, event->data_address());
+                        signal_on_data_(signal_engine_handle_, 101, &(event->data<Depth>()));
                     }
                 });
 
@@ -201,7 +201,7 @@ namespace kungfu
                     // 轉發到 signal library (type=103 for Trade)
                     if (signal_on_data_ && signal_engine_handle_)
                     {
-                        signal_on_data_(signal_engine_handle_, 103, event->data_address());
+                        signal_on_data_(signal_engine_handle_, 103, &(event->data<Trade>()));
                     }
                 });
 
