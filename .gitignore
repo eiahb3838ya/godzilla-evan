@@ -7,6 +7,7 @@ dist/
 
 # C/C++/CMake build outputs
 build/
+ref/
 core/**/build/
 CMakeFiles/
 CMakeCache.txt
