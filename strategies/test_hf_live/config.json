@@ -1,0 +1,19 @@
+{
+  "name": "test_hf_live",
+  "path": "strategies/test_hf_live/test_hf_live.py",
+  "signal_library_path": "/app/hf-live/build/libsignal.so",
+  "accounts": [
+    {
+      "source": "binance",
+      "id": "demo"
+    }
+  ],
+  "subscriptions": [
+    {
+      "source": "binance",
+      "exchange": "binance",
+      "symbol": "btcusdt",
+      "is_level2": true
+    }
+  ]
+}
