@@ -1,6 +1,7 @@
 {
   "name": "test_hf_live",
-  "path": "strategies/test_hf_live/test_hf_live.py",
+  "script": "/app/core/python/dev_run.py",
+  "args": ["strategy", "--name", "test_hf_live", "--path", "strategies/test_hf_live/test_hf_live.py"],
   "signal_library_path": "/app/hf-live/build/libsignal.so",
   "accounts": [
     {
