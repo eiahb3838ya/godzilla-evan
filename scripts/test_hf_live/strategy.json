@@ -1,0 +1,13 @@
+{
+  "apps": [{
+    "name": "strategy_test_hf_live",
+    "cwd": "/app",
+    "script": "/app/core/python/dev_run.py",
+    "exec_interpreter": "python3",
+    "args": "-l info strategy -n test_hf_live -p /app/strategies/test_hf_live/test_hf_live.py",
+    "watch": false,
+    "env": {
+      "KF_HOME": "/app/runtime"
+    }
+  }]
+}

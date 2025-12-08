@@ -206,61 +206,222 @@ feat: add test_hf_live strategy for e2e testing
 
 ---
 
-## Phase 4-6: 運行時驗證 ⏸️
+## Phase 4-6: 運行時驗證（漸進式）⏸️
 
-### 4.1 預期測試流程
+### 驗證原則
 
-1. 啟動策略: `pm2 start strategies/test_hf_live/config.json`
-2. 觀察日誌，驗證:
-   - ✅ **Checkpoint 1**: `🏁 FactorEntry Created` (因子初始化)
-   - ✅ **Checkpoint 2**: `📊 bid=... ask=...` (Depth 接收)
-   - ✅ **Checkpoint 3**: `🔢 UpdateFactors spread=...` (因子計算)
-   - ✅ **Checkpoint 4**: `🤖 Model Created` (模型初始化)
-   - ✅ **Checkpoint 5**: `🔮 Calculate output=[1.0, 0.8]` (模型推理)
-   - ✅ **Checkpoint 6**: `✅ on_depth` (Python Depth 回調)
-   - ✅ **Checkpoint 7**: `🎉 on_factor` (Python Factor 回調)
-   - ✅ **Checkpoint 8**: `🎊 E2E TEST PASSED` (完整流程驗證)
+1. **逐層測試**: 基礎服務 → 策略 → Signal Library → 因子 → 模型 → 回調
+2. **失敗即停**: 任何階段失敗立即停止，不前進
+3. **實際日誌**: 只依賴真實輸出，不假設成功
+4. **手動確認**: 用戶驗證每個階段的實際日誌
 
-### 4.2 遇到的問題
+---
 
-**問題**: PM2 配置格式調試複雜
+### Phase 4A: 基礎服務啟動 ⏸️
 
-**嘗試的方法**:
-1. 使用 `"path": "strategies/test_hf_live/test_hf_live.py"` → ❌ 無法識別
-2. 使用 `"args": "strategies.test_hf_live.test_hf_live"` → ❌ dev_run.py 不支持模塊名
-3. 使用 `"args": ["strategy", "--name", "test_hf_live", "--path", "..."]` → ⏸️ 需進一步測試
+**目標**: 確認 Master/Ledger/MD/TD 能正常啟動
 
-**dev_run.py 命令格式**:
+**操作**:
 ```bash
-python3 /app/core/python/dev_run.py strategy \
-    --name test_hf_live \
-    --path strategies/test_hf_live/test_hf_live.py
+docker exec -it godzilla-dev bash -c "cd /app/scripts/binance_test && ./run.sh start"
+docker exec godzilla-dev pm2 list
 ```
 
-### 4.3 建議的手動測試步驟
-
-```bash
-# 1. 進入容器
-docker exec -it godzilla-dev bash
-
-# 2. 確認 libsignal.so 存在
-ls -lh /app/hf-live/build/libsignal.so
-
-# 3. 手動啟動策略 (前台運行)
-cd /app
-python3 core/python/dev_run.py strategy \
-    --name test_hf_live \
-    --path strategies/test_hf_live/test_hf_live.py
-
-# 4. 觀察日誌輸出，驗證數據流
-# 期待看到: 🏁 📊 🔢 🤖 🔮 ✅ 🎉 🎊 標記
+**成功標誌**:
+```
+┌────┬──────────────┬─────────┬────────┬──────┬───────────┐
+│ 0  │ master       │ online  │ ...    │ ...  │ ...       │
+│ 1  │ ledger       │ online  │ ...    │ ...  │ ...       │
+│ 2  │ md_binance   │ online  │ ...    │ ...  │ ...       │
+│ 3  │ td_binance   │ online  │ ...    │ ...  │ ...       │
+└────┴──────────────┴─────────┴────────┴──────┴───────────┘
 ```
 
-### 4.4 後續工作
+**失敗處理**: 
+- 檢查 `pm2 logs <service>` 找錯誤原因
+- 確認 Binance API key 配置正確
+- 檢查網絡連接
 
-**Option A**: 修正 PM2 配置格式並重新測試  
-**Option B**: 使用 systemd 或其他進程管理工具  
-**Option C**: 直接在終端前台運行測試
+---
+
+### Phase 4B: 簡單策略測試（無 signal library）⏸️
+
+**目標**: 確認策略能啟動並收到 on_depth 回調
+
+**操作**:
+```bash
+docker exec godzilla-dev pm2 start /app/scripts/test_hf_live/strategy.json
+docker exec -it godzilla-dev pm2 logs strategy_test_hf_live --lines 50
+```
+
+**成功標誌**:
+```
+strategy_test_hf_live  | 🏁 [test_hf_live] Pre-Start
+strategy_test_hf_live  | ✅ [on_depth] btcusdt bid=42000.50 ask=42001.20
+strategy_test_hf_live  | ✅ [on_depth] btcusdt bid=42001.00 ask=42001.50
+```
+
+**失敗處理**: 
+- 檢查 symbol 訂閱格式（小寫 + 底線）
+- 檢查 MD gateway 是否正常運行
+- 查看 `pm2 logs md_binance` 確認數據接收
+
+**簡化策略代碼**（strategies/test_hf_live/test_hf_live.py）:
+```python
+from kungfu.wingchun.constants import *
+from pywingchun.constants import InstrumentType
+
+def pre_start(context):
+    context.log().info("🏁 [test_hf_live] Pre-Start")
+    context.subscribe("binance", ["btcusdt"], InstrumentType.Spot, Exchange.BINANCE)
+
+def on_depth(context, depth):
+    bid = depth.bid_price[0]
+    ask = depth.ask_price[0]
+    context.log().info(f"✅ [on_depth] {depth.symbol} bid={bid:.2f} ask={ask:.2f}")
+
+def post_stop(context):
+    context.log().info("🏁 [test_hf_live] Stopped")
+```
+
+---
+
+### Phase 4C: 研究 libsignal.so 集成方式 ⏸️
+
+**目標**: 找到正確的 signal library 加載方法
+
+**調查清單**:
+1. ✅ 查看 `strategies/factor_strategy/run.py` 實現（已確認沒有特殊加載）
+2. ⏸️ 查看 hf-live 文檔是否有集成說明
+3. ⏸️ 查看 hf-live 源碼中的 Python 綁定部分
+4. ⏸️ 測試環境變量方案（LD_LIBRARY_PATH）
+5. ⏸️ 測試 ctypes 動態加載方案
+
+**可能的集成方案**:
+
+**方案 A - 環境變量**（最簡單，優先嘗試）:
+```json
+"env": {
+  "KF_HOME": "/app/runtime",
+  "LD_LIBRARY_PATH": "/app/hf-live/build:$LD_LIBRARY_PATH",
+  "LD_PRELOAD": "/app/hf-live/build/libsignal.so"
+}
+```
+
+**方案 B - 策略內加載**（需要代碼支持）:
+```python
+import ctypes
+signal_lib = ctypes.CDLL('/app/hf-live/build/libsignal.so')
+# 調用初始化函數...
+```
+
+**方案 C - 修改 Wingchun**（最複雜，最後考慮）:
+- 在 Strategy 類中添加 signal library 支持
+- 需要修改 C++ 和 Python 綁定
+
+**決策**: 先嘗試方案 A，失敗再研究方案 B/C
+
+---
+
+### Phase 4D: 驗證因子層（C++ 日誌）⏸️
+
+**前提條件**: Phase 4C 成功集成 libsignal.so
+
+**目標**: 確認 test0000 因子被創建並計算
+
+**預期日誌**（來自 C++ stdout）:
+```
+🏁 [test0000::FactorEntry] Created for: BTCUSDT
+📊 [test0000 #10] bid=42000.5 ask=42001.2
+📊 [test0000 #20] bid=42001.0 ask=42001.5
+🔢 [test0000::UpdateFactors] spread=0.7 mid=42000.85
+```
+
+**驗證方法**:
+```bash
+docker exec -it godzilla-dev pm2 logs strategy_test_hf_live | grep "🏁\|📊\|🔢"
+```
+
+**失敗可能原因**:
+- libsignal.so 未正確加載（檢查 ldd）
+- test0000 因子未註冊（檢查 REGISTER_FACTOR_AUTO）
+- DefaultConfig 未生效（檢查 config_parser.h）
+
+---
+
+### Phase 4E: 驗證模型層（C++ 日誌）⏸️
+
+**前提條件**: Phase 4D 成功
+
+**目標**: 確認 test0000 模型被創建並執行推理
+
+**預期日誌**（來自 C++ stdout）:
+```
+🤖 [test0000::Model] Created with 3 factors
+🔮 [test0000::Calculate] asset=BTCUSDT → output=[1.0, 0.8]
+```
+
+**驗證方法**:
+```bash
+docker exec -it godzilla-dev pm2 logs strategy_test_hf_live | grep "🤖\|🔮"
+```
+
+**失敗可能原因**:
+- test0000 模型未註冊
+- 因子→模型數據流未連接
+- 需要檢查 ModelCalculationEngine 配置
+
+---
+
+### Phase 4F: 驗證 Python 回調（on_factor）⏸️
+
+**前提條件**: Phase 4E 成功
+
+**目標**: 確認 Python 能收到 on_factor 回調
+
+**策略添加回調**:
+```python
+def on_factor(ctx, symbol, timestamp, values):
+    ctx.log().info(f"🎉 [on_factor] {symbol} @ {timestamp}")
+    ctx.log().info(f"   Model Output: {values}")
+    if len(values) >= 2:
+        ctx.log().info(f"   ✅ pred_signal={values[0]:.4f}, pred_confidence={values[1]:.4f}")
+        ctx.log().info("   🎊 E2E TEST PASSED!")
+```
+
+**預期日誌**:
+```
+strategy_test_hf_live  | 🎉 [on_factor] BTCUSDT @ 1733684523000000000
+strategy_test_hf_live  |    Model Output: [1.0, 0.8]
+strategy_test_hf_live  |    ✅ pred_signal=1.0000, pred_confidence=0.8000
+strategy_test_hf_live  |    🎊 E2E TEST PASSED!
+```
+
+**驗證方法**:
+```bash
+docker exec -it godzilla-dev pm2 logs strategy_test_hf_live | grep "🎉\|🎊"
+```
+
+**失敗可能原因**:
+- on_factor 回調未定義或未註冊
+- C++ → Python 綁定問題
+- 需要檢查 pybind11 綁定代碼
+
+---
+
+### 當前進度總結
+
+| 階段 | 狀態 | 說明 |
+|-----|------|------|
+| Phase 1-3 | ✅ 完成 | test0000 因子、模型、策略代碼已編寫 |
+| Phase 4A | ⏸️ 待測試 | 基礎服務啟動驗證 |
+| Phase 4B | ⏸️ 待測試 | 簡單策略測試（無 signal library） |
+| Phase 4C | ⏸️ 待研究 | libsignal.so 集成方式調查 |
+| Phase 4D | ⏸️ 待驗證 | 因子層日誌驗證 |
+| Phase 4E | ⏸️ 待驗證 | 模型層日誌驗證 |
+| Phase 4F | ⏸️ 待驗證 | Python on_factor 回調驗證 |
+
+**下一步**: 執行 Phase 4A 測試，等待用戶確認結果
 
 ---
 
