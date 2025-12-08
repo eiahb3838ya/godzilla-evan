@@ -244,45 +244,79 @@ docker exec godzilla-dev pm2 list
 
 ---
 
-### Phase 4B: 簡單策略測試（無 signal library）⏸️
+### Phase 4B: 基礎訂單流測試（無 hf-live）⏸️
 
-**目標**: 確認策略能啟動並收到 on_depth 回調
+**目標**: 驗證 Binance → Python 訂單流，確認訂單成功發射到交易所
 
-**操作**:
+**測試內容**:
+1. ✅ 策略啟動並訂閱 btcusdt
+2. ✅ 接收盤口數據（on_depth）
+3. ✅ 發送極遠價格測試訂單（不會成交）
+4. ✅ 收到訂單確認回調（on_order）
+5. ✅ 驗證 ex_order_id 非空（已提交到 Binance）
+6. ✅ 取消測試訂單並清理
+
+**不涉及**: hf-live (libsignal.so)、因子、模型
+
+**測試訂單參數**:
+- **Symbol**: btcusdt (現貨)
+- **Side**: Buy（買入）
+- **Price**: ask - 10000 USDT（極低價，確保不會成交）
+- **Volume**: 0.001 BTC（最小測試量）
+- **Order Type**: Limit（限價單）
+
+**成功標準**（必須全部滿足）:
+
+| 驗證點 | 成功標準 | 失敗標誌 |
+|--------|---------|---------|
+| ✅ 策略啟動 | 看到 🏁 Pre-Start | 進程崩潰 |
+| ✅ 數據接收 | 看到 📊 on_depth | 5秒內無數據 |
+| ✅ 訂單發送 | 看到 💸 Placing Order | insert_order 拋異常 |
+| ✅ 訂單確認 | 看到 `status=Submitted` | status=Error |
+| ✅ 交易所 ID | `ex_order_id != ''` | ex_order_id 始終為空 |
+| ✅ 訂單取消 | 看到 🗑️ Cancelling Order | 取消失敗 |
+
+**操作步驟**:
 ```bash
+# 1. 清理環境
+docker exec godzilla-dev bash -c "pm2 stop all && pm2 delete all"
+docker exec godzilla-dev bash -c "find ~/.config/kungfu/app/ -name '*.journal' 2>/dev/null | xargs rm -f"
+
+# 2. 啟動基礎服務
+docker exec godzilla-dev bash -c "cd /app/scripts/binance_test && ./run.sh start"
+sleep 5
+docker exec godzilla-dev pm2 list  # 確認 master/ledger/md/td online
+
+# 3. 啟動測試策略
 docker exec godzilla-dev pm2 start /app/scripts/test_hf_live/strategy.json
+
+# 4. 查看日誌（驗證訂單發射）
 docker exec -it godzilla-dev pm2 logs strategy_test_hf_live --lines 50
+
+# 5. 清理
+docker exec godzilla-dev bash -c "pm2 stop all && pm2 delete all"
 ```
 
-**成功標誌**:
+**預期日誌順序**:
 ```
-strategy_test_hf_live  | 🏁 [test_hf_live] Pre-Start
-strategy_test_hf_live  | ✅ [on_depth] btcusdt bid=42000.50 ask=42001.20
-strategy_test_hf_live  | ✅ [on_depth] btcusdt bid=42001.00 ask=42001.50
+1. 🏁 [Phase 4B] Pre-Start - Testing Order Placement
+2. 📡 Subscribed: btcusdt (Spot)
+3. 📊 [on_depth] btcusdt bid=42000.50 ask=42001.20 spread=0.70
+4. 💸 [Placing Order] Buy 0.001 BTC @ 32001.20 (ask - 10000)
+5. ✅ [Order Placed] order_id=123456789
+6. 📬 [on_order] order_id=123456789 status=Pending ex_order_id=''
+7. 📬 [on_order] order_id=123456789 status=Submitted ex_order_id='4567890123'
+8. 🎉 [Order Fired!] Successfully submitted to Binance
+9. 🗑️ [Cancelling Order] order_id=123456789 ex_order_id='4567890123'
+10. ✅ [Order Cancelled] Successfully cleaned up
 ```
 
-**失敗處理**: 
-- 檢查 symbol 訂閱格式（小寫 + 底線）
-- 檢查 MD gateway 是否正常運行
-- 查看 `pm2 logs md_binance` 確認數據接收
-
-**簡化策略代碼**（strategies/test_hf_live/test_hf_live.py）:
-```python
-from kungfu.wingchun.constants import *
-from pywingchun.constants import InstrumentType
-
-def pre_start(context):
-    context.log().info("🏁 [test_hf_live] Pre-Start")
-    context.subscribe("binance", ["btcusdt"], InstrumentType.Spot, Exchange.BINANCE)
-
-def on_depth(context, depth):
-    bid = depth.bid_price[0]
-    ask = depth.ask_price[0]
-    context.log().info(f"✅ [on_depth] {depth.symbol} bid={bid:.2f} ask={ask:.2f}")
-
-def post_stop(context):
-    context.log().info("🏁 [test_hf_live] Stopped")
-```
+**失敗處理**:
+- 無 📊 on_depth → 檢查 `pm2 logs md_binance`
+- insert_order 拋異常 → 檢查帳號配置 `~/.config/kungfu/app/runtime/config/td/binance/`
+- status=Error → 查看 `order.error_code`
+- ex_order_id 為空 → 檢查 `pm2 logs td_binance:gz_user1`
+- 訂單無法取消 → 檢查變量存儲邏輯
 
 ---
 
