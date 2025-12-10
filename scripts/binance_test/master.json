@@ -2,8 +2,8 @@
   "apps": [
     {
       "name": "master",
-      "cwd": "./",
-      "script": "../../core/python/dev_run.py",
+      "cwd": "/app",
+      "script": "/app/core/python/dev_run.py",
       "exec_interpreter": "python3",
       "args": "-l info master",
       "watch": "true",

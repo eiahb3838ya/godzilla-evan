@@ -1,20 +1,8 @@
 {
-  "name": "test_hf_live",
-  "script": "/app/core/python/dev_run.py",
-  "args": ["strategy", "--name", "test_hf_live", "--path", "strategies/test_hf_live/test_hf_live.py"],
-  "signal_library_path": "/app/hf-live/build/libsignal.so",
-  "accounts": [
-    {
-      "source": "binance",
-      "id": "demo"
-    }
-  ],
-  "subscriptions": [
-    {
-      "source": "binance",
-      "exchange": "binance",
-      "symbol": "btcusdt",
-      "is_level2": true
-    }
-  ]
+  "md_source": "binance",
+  "td_source": "binance",
+  "account": "gz_user1",
+  "symbol": "btcusdt",
+  "instrument_type": "FFuture",
+  "signal_library_path": "/app/hf-live/build/libsignal.so"
 }

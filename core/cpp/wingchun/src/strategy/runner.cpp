@@ -8,6 +8,7 @@
 #include <utility>
 #include <cstdlib>
 #include <dlfcn.h>
+#include <iostream>
 #include <fmt/format.h>
 #include <kungfu/yijinjing/log/setup.h>
 #include <kungfu/yijinjing/time.h>
@@ -33,16 +34,35 @@ namespace kungfu
 
             Runner::~Runner()
             {
+                std::cerr << "\n[DESTRUCTOR] ============================================" << std::endl;
+                std::cerr << "[DESTRUCTOR] ~Runner() called" << std::endl;
+                std::cerr << "[DESTRUCTOR] signal_engine_handle_: " << signal_engine_handle_ << std::endl;
+                std::cerr << "[DESTRUCTOR] signal_lib_handle_: " << signal_lib_handle_ << std::endl;
+                std::cerr << "[DESTRUCTOR] ============================================\n" << std::endl;
+                
                 if (signal_destroy_ && signal_engine_handle_)
                 {
+                    std::cerr << "[DESTRUCTOR] Calling signal_destroy()..." << std::endl;
                     signal_destroy_(signal_engine_handle_);
                     signal_engine_handle_ = nullptr;
+                    std::cerr << "[DESTRUCTOR] signal_destroy() completed" << std::endl;
                 }
+                
                 if (signal_lib_handle_)
                 {
+                    std::cerr << "[DESTRUCTOR] Calling dlclose()..." << std::endl;
+                    // 确保所有函数指针失效
+                    signal_create_ = nullptr;
+                    signal_register_callback_ = nullptr;
+                    signal_on_data_ = nullptr;
+                    signal_destroy_ = nullptr;
+                    
                     dlclose(signal_lib_handle_);
                     signal_lib_handle_ = nullptr;
+                    std::cerr << "[DESTRUCTOR] dlclose() completed" << std::endl;
                 }
+                
+                std::cerr << "[DESTRUCTOR] ~Runner() completed successfully\n" << std::endl;
             }
 
             Context_ptr Runner::make_context()
@@ -74,25 +94,54 @@ namespace kungfu
                 const char* lib_path_env = std::getenv("SIGNAL_LIB_PATH");
                 std::string lib_path = lib_path_env ? lib_path_env : "/app/hf-live/build/libsignal.so";
 
+                // ===== 調試輸出 1: 函數入口 =====
+                std::cerr << "\n============================================" << std::endl;
+                std::cerr << "[DEBUG] load_signal_library() called" << std::endl;
+                std::cerr << "[DEBUG] Signal library path: " << lib_path << std::endl;
+                std::cerr << "============================================\n" << std::endl;
+                
                 SPDLOG_INFO("Attempting to load signal library from: {}", lib_path);
 
-                // dlopen 加載動態庫
-                signal_lib_handle_ = dlopen(lib_path.c_str(), RTLD_LAZY);
+                // dlopen 加載動態庫 (使用 RTLD_NODELETE 防止析構時卸載，避免全局對象雙重釋放)
+                signal_lib_handle_ = dlopen(lib_path.c_str(), RTLD_LAZY | RTLD_NODELETE);
+                
+                // ===== 調試輸出 2: dlopen 結果 =====
                 if (!signal_lib_handle_)
                 {
-                    SPDLOG_WARN("Failed to load signal library: {}", dlerror());
+                    const char* error_msg = dlerror();
+                    std::cerr << "[ERROR] ❌ Failed to load signal library!" << std::endl;
+                    std::cerr << "[ERROR] dlopen error: " << (error_msg ? error_msg : "unknown") << std::endl;
+                    std::cerr << "[ERROR] Attempted path: " << lib_path << std::endl;
+                    std::cerr << "============================================\n" << std::endl;
+                    
+                    SPDLOG_WARN("Failed to load signal library: {}", error_msg);
                     return;
                 }
 
+                std::cerr << "[SUCCESS] ✅ dlopen succeeded! Library loaded." << std::endl;
+
                 // 加載函數符號
+                std::cerr << "[DEBUG] Loading function symbols..." << std::endl;
+                
                 signal_create_ = (signal_create_fn)dlsym(signal_lib_handle_, "signal_create");
                 signal_register_callback_ = (signal_register_callback_fn)dlsym(signal_lib_handle_, "signal_register_callback");
                 signal_on_data_ = (signal_on_data_fn)dlsym(signal_lib_handle_, "signal_on_data");
                 signal_destroy_ = (signal_destroy_fn)dlsym(signal_lib_handle_, "signal_destroy");
 
+                // ===== 調試輸出 3: 符號加載結果 =====
+                std::cerr << "[DEBUG] signal_create: " << (signal_create_ ? "✅ OK" : "❌ FAILED") << std::endl;
+                std::cerr << "[DEBUG] signal_register_callback: " << (signal_register_callback_ ? "✅ OK" : "❌ FAILED") << std::endl;
+                std::cerr << "[DEBUG] signal_on_data: " << (signal_on_data_ ? "✅ OK" : "❌ FAILED") << std::endl;
+                std::cerr << "[DEBUG] signal_destroy: " << (signal_destroy_ ? "✅ OK" : "❌ FAILED") << std::endl;
+
                 // 檢查必要函數是否加載成功
                 if (!signal_create_ || !signal_on_data_)
                 {
+                    std::cerr << "[ERROR] ❌ Required functions not loaded!" << std::endl;
+                    std::cerr << "[ERROR] signal_create: " << (signal_create_ ? "OK" : "NULL") << std::endl;
+                    std::cerr << "[ERROR] signal_on_data: " << (signal_on_data_ ? "OK" : "NULL") << std::endl;
+                    std::cerr << "============================================\n" << std::endl;
+                    
                     SPDLOG_ERROR("Failed to load required signal functions (signal_create: {}, signal_on_data: {})",
                                  signal_create_ != nullptr, signal_on_data_ != nullptr);
                     dlclose(signal_lib_handle_);
@@ -104,10 +153,20 @@ namespace kungfu
                     return;
                 }
 
+                std::cerr << "[SUCCESS] ✅ All required functions loaded." << std::endl;
+
+                // ===== 調試輸出 4: 創建 engine =====
+                std::cerr << "[DEBUG] Calling signal_create(\"{}\")..." << std::endl;
+                
                 // 創建 signal engine (空配置)
                 signal_engine_handle_ = signal_create_("{}");
+                
                 if (!signal_engine_handle_)
                 {
+                    std::cerr << "[ERROR] ❌ signal_create returned NULL!" << std::endl;
+                    std::cerr << "[ERROR] Engine creation failed." << std::endl;
+                    std::cerr << "============================================\n" << std::endl;
+                    
                     SPDLOG_ERROR("signal_create returned null, engine creation failed");
                     dlclose(signal_lib_handle_);
                     signal_lib_handle_ = nullptr;
@@ -118,32 +177,55 @@ namespace kungfu
                     return;
                 }
 
-                // 註冊因子回調 (使用 lambda 捕獲 this)
+                std::cerr << "[SUCCESS] ✅ Signal engine created successfully!" << std::endl;
+                std::cerr << "[DEBUG] Engine handle: " << signal_engine_handle_ << std::endl;
+
+                // ===== 調試輸出 5: 註冊回調 =====
                 if (signal_register_callback_)
                 {
+                    std::cerr << "[DEBUG] Registering factor callback..." << std::endl;
+                    
                     signal_register_callback_(signal_engine_handle_,
                         [](const char* symbol, long long ts, const double* values, int count, void* ud) {
                             Runner* self = static_cast<Runner*>(ud);
                             self->on_factor_callback(symbol, ts, values, count);
                         },
                         this);
+                    
+                    std::cerr << "[SUCCESS] ✅ Factor callback registered!" << std::endl;
                     SPDLOG_INFO("Signal callback registered successfully");
                 }
+                else
+                {
+                    std::cerr << "[WARNING] ⚠️  signal_register_callback is NULL, skipping..." << std::endl;
+                }
 
+                // ===== 調試輸出 6: 最終成功 =====
+                std::cerr << "\n============================================" << std::endl;
+                std::cerr << "[SUCCESS] 🎉 Signal library fully initialized!" << std::endl;
+                std::cerr << "[SUCCESS] Library path: " << lib_path << std::endl;
+                std::cerr << "============================================\n" << std::endl;
+                
                 SPDLOG_INFO("Signal library loaded successfully: {}", lib_path);
             }
 
             void Runner::on_factor_callback(const char* symbol, long long timestamp, const double* values, int count)
             {
+                std::cerr << "[FACTOR] 🎊 Received factor for " << symbol 
+                          << " @ " << timestamp << " (count=" << count << ")" << std::endl;
+                
                 SPDLOG_DEBUG("Received factor for {} @ {}: count={}", symbol, timestamp, count);
 
                 // 調用所有策略的 on_factor 回調
                 std::vector<double> factor_values(values, values + count);
                 for (auto& [id, strategy] : strategies_)
                 {
+                    std::cerr << "[FACTOR] Calling strategy on_factor for strategy_id=" << id << std::endl;
                     context_->set_current_strategy_index(id);
                     strategy->on_factor(context_, std::string(symbol), timestamp, factor_values);
                 }
+                
+                std::cerr << "[FACTOR] ✅ on_factor completed" << std::endl;
             }
 
             void Runner::on_start()
