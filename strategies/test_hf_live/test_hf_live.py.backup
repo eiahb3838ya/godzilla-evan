@@ -177,10 +177,6 @@ def on_factor(context, symbol, timestamp, values):
         timestamp: 时间戳 (纳秒)
         values: 因子值列表 [spread, mid_price, bid_volume] + 模型输出 [pred_signal, pred_confidence]
     """
-    # ✅ Phase 4G 修復: 立即複製數據到 Python list,避免懸空指針
-    # C++ 側的 factor_values 可能在回調返回後析構,導致 pybind11 綁定的 values 指向已釋放記憶體
-    values = list(values)
-    
     context.log().info(f"")
     context.log().info(f"🎊🎊🎊 [on_factor] Factor data received! 🎊🎊🎊")
     context.log().info(f"  Symbol: {symbol}")
@@ -188,6 +184,7 @@ def on_factor(context, symbol, timestamp, values):
     context.log().info(f"  Values count: {len(values)}")
     context.log().info(f"  Values: {values}")
     context.log().info(f"")
+    
     # 解析 test0000 因子（3个因子 + 2个模型输出 = 5个值）
     if len(values) >= 5:
         # 因子值
