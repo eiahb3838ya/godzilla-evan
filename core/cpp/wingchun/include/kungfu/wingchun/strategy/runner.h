@@ -50,11 +50,15 @@ namespace kungfu
                 typedef void (*signal_register_callback_fn)(void*, void (*)(const char*, long long, const double*, int, void*), void*);
                 typedef void (*signal_on_data_fn)(void*, int, const void*);
                 typedef void (*signal_destroy_fn)(void*);
+                // Phase 4I: Poll callback queue function
+                typedef int (*signal_poll_callbacks_fn)(void*);
 
                 signal_create_fn signal_create_ = nullptr;
                 signal_register_callback_fn signal_register_callback_ = nullptr;
                 signal_on_data_fn signal_on_data_ = nullptr;
                 signal_destroy_fn signal_destroy_ = nullptr;
+                // Phase 4I: Poll function pointer
+                signal_poll_callbacks_fn signal_poll_callbacks_ = nullptr;
 
                 void load_signal_library();
                 void on_factor_callback(const char* symbol, long long timestamp, const double* values, int count);

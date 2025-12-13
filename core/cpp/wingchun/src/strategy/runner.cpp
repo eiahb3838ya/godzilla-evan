@@ -56,7 +56,8 @@ namespace kungfu
                     signal_register_callback_ = nullptr;
                     signal_on_data_ = nullptr;
                     signal_destroy_ = nullptr;
-                    
+                    signal_poll_callbacks_ = nullptr;  // Phase 4I
+
                     dlclose(signal_lib_handle_);
                     signal_lib_handle_ = nullptr;
                     std::cerr << "[DESTRUCTOR] dlclose() completed" << std::endl;
@@ -128,11 +129,15 @@ namespace kungfu
                 signal_on_data_ = (signal_on_data_fn)dlsym(signal_lib_handle_, "signal_on_data");
                 signal_destroy_ = (signal_destroy_fn)dlsym(signal_lib_handle_, "signal_destroy");
 
+                // Phase 4I: Load poll callback function
+                signal_poll_callbacks_ = (signal_poll_callbacks_fn)dlsym(signal_lib_handle_, "signal_poll_callbacks");
+
                 // ===== 調試輸出 3: 符號加載結果 =====
                 std::cerr << "[DEBUG] signal_create: " << (signal_create_ ? "✅ OK" : "❌ FAILED") << std::endl;
                 std::cerr << "[DEBUG] signal_register_callback: " << (signal_register_callback_ ? "✅ OK" : "❌ FAILED") << std::endl;
                 std::cerr << "[DEBUG] signal_on_data: " << (signal_on_data_ ? "✅ OK" : "❌ FAILED") << std::endl;
                 std::cerr << "[DEBUG] signal_destroy: " << (signal_destroy_ ? "✅ OK" : "❌ FAILED") << std::endl;
+                std::cerr << "[DEBUG] signal_poll_callbacks (Phase 4I): " << (signal_poll_callbacks_ ? "✅ OK" : "❌ FAILED") << std::endl;
 
                 // 檢查必要函數是否加載成功
                 if (!signal_create_ || !signal_on_data_)
@@ -150,6 +155,7 @@ namespace kungfu
                     signal_register_callback_ = nullptr;
                     signal_on_data_ = nullptr;
                     signal_destroy_ = nullptr;
+                    signal_poll_callbacks_ = nullptr;  // Phase 4I
                     return;
                 }
 
@@ -174,6 +180,7 @@ namespace kungfu
                     signal_register_callback_ = nullptr;
                     signal_on_data_ = nullptr;
                     signal_destroy_ = nullptr;
+                    signal_poll_callbacks_ = nullptr;  // Phase 4I
                     return;
                 }
 
@@ -242,6 +249,13 @@ namespace kungfu
                 events_ | is(msg::type::Depth) |
                 $([&](event_ptr event)
                 {
+                    // Phase 4I: Poll hf-live callback queue (process in main thread)
+                    // 在主線程輪詢回調隊列，確保回調在主線程執行
+                    if (signal_poll_callbacks_ && signal_engine_handle_)
+                    {
+                        signal_poll_callbacks_(signal_engine_handle_);
+                    }
+
                     for (const auto &strategy : strategies_)
                     {
                         context_->set_current_strategy_index(strategy.first);
