@@ -493,3 +493,168 @@ Background Thread          Main Thread
 - Queue approach allows background thread to continue immediately
 - Polling in event loop ensures callbacks run in correct thread context
 - No risk of deadlock between threads
+
+---
+
+## Appendix B: E2E 測試計劃 (test_hf_live 策略)
+
+### B.1 目標
+
+使用 `test_hf_live` 策略驗證 Phase 4I Callback Queue 修復的完整數據流：
+
+```
+Binance WebSocket → Godzilla MD → FactorEngine → test0000::Factor
+→ ModelEngine → test0000::Model → SignalSender (Queue) → signal_poll_callbacks
+→ Runner::on_factor_callback → Python on_factor()
+```
+
+### B.2 關鍵差異 (vs helloworld)
+
+| 項目 | helloworld | test_hf_live |
+|------|------------|--------------|
+| on_factor 回調 | ❌ 無 | ✅ 有 |
+| Factor 計算 | ❌ 無 | ✅ test0000 |
+| Model 推理 | ❌ 無 | ✅ test0000 |
+| Callback Queue 驗證 | ❌ 間接 | ✅ 完整 |
+
+### B.3 執行步驟
+
+#### Step 1: 停止所有服務
+```bash
+docker exec godzilla-dev pm2 delete all
+```
+
+#### Step 2: 清理 Journals 和 Logs
+```bash
+docker exec godzilla-dev bash -c "
+rm -rf /shared/kungfu/runtime/*
+find ~/.config/kungfu/app/ -name '*.journal' -delete
+rm -rf ~/.pm2/logs/*
+"
+```
+
+#### Step 3: 啟動基礎服務 (按順序)
+```bash
+cd /app/scripts/binance_test
+pm2 start master.json && sleep 5
+pm2 start ledger.json && sleep 5
+pm2 start md_binance.json && sleep 5
+pm2 start td_binance.json && sleep 5
+```
+
+#### Step 4: 啟動 test_hf_live 策略
+```bash
+pm2 start /app/scripts/test_hf_live/strategy.json
+```
+
+#### Step 5: 監控並驗證
+
+**成功標準:**
+1. PM2 restart count = 0
+2. 無 "pure virtual method called" 錯誤
+3. 無 "bus error" 錯誤
+4. 日誌顯示完整 emoji 序列:
+   - `🏁 [test0000::FactorEntry] Created`
+   - `📊 [test0000 #N] bid=... ask=...`
+   - `🔢 [test0000::UpdateFactors]`
+   - `📨 [SignalSender::Send] Queuing result`
+   - `🎯 [SignalSender::ExecuteCallback] Executing in main thread`
+   - `🎊 [on_factor] Received factor`
+
+**Phase 4I 特有驗證:**
+- 看到 `Phase 4I: Callback queue initialized`
+- 看到 `signal_poll_callbacks (Phase 4I): ✅ OK`
+- 看到 `Polled and processed N callbacks in main thread`
+
+### B.4 關鍵文件
+
+| 文件 | 用途 |
+|------|------|
+| `strategies/test_hf_live/test_hf_live.py` | Python 策略 (含 on_factor) |
+| `strategies/test_hf_live/config.json` | 策略配置 |
+| `scripts/test_hf_live/strategy.json` | PM2 配置 |
+| `hf-live/factors/test0000/factor_entry.cpp` | test0000 因子實現 |
+| `hf-live/models/test0000/test0000_model.cc` | test0000 模型實現 |
+| `hf-live/adapter/signal_api.cpp` | signal_poll_callbacks 實現 |
+| `core/cpp/wingchun/src/strategy/runner.cpp` | poll 調用點 |
+
+### B.5 預期輸出
+
+完整成功時應看到 on_factor 接收模型輸出值:
+```python
+values = [
+    pred_signal,      # Model output 1: 1.0
+    pred_confidence   # Model output 2: 0.8
+]
+```
+
+---
+
+## Appendix C: E2E 測試結果總結
+
+**測試日期**: 2024-12-13
+**測試分支**: `fix/phase4i-callback-queue`
+**測試策略**: `test_hf_live`
+
+### C.1 服務穩定性
+
+| 服務 | 運行時間 | 重啟次數 | 狀態 |
+|------|----------|----------|------|
+| master | 87s | **0** | ✅ PASS |
+| ledger | 82s | **0** | ✅ PASS |
+| md_binance | 77s | **0** | ✅ PASS |
+| td_binance:gz_user1 | 71s | **0** | ✅ PASS |
+| strategy_test_hf_live | 56s | **0** | ✅ PASS |
+
+### C.2 Phase 4I 特有日志驗證
+
+```
+✅ [DEBUG] signal_poll_callbacks (Phase 4I): ✅ OK
+✅ [signal_api] Phase 4I: Callback queue initialized (capacity=4096)
+✅ 📨 [SignalSender::Send] Phase 4I: Queuing result (NOT direct callback)
+✅ 🎯 [SignalSender::ExecuteCallback] Phase 4I: Executing in main thread
+✅ [signal_api] Phase 4I: Polled and processed 1 callbacks in main thread
+```
+
+### C.3 完整 E2E 數據流驗證
+
+```
+Binance WebSocket → MD
+    ✅ [FactorEngine::OnDepth] Received Depth for BTCUSDT (bid=90393.8 ask=90395.3)
+
+Factor 計算
+    ✅ 📊 [test0000 #40] bid=90393.8 ask=90396.3
+    ✅ 🔢 [test0000::UpdateFactors] spread=0.3 mid=90400.9
+
+Model 推理
+    ✅ 📥 [ModelEngine::SendFactors] Received factors
+    ✅ 🎯 [ModelScanThread::ScanFunc] TryGetOutput SUCCESS
+    ✅ [signal_api] Model prediction for BTCUSDT: 2 values
+
+Phase 4I Callback Queue
+    ✅ 📨 [SignalSender::Send] Phase 4I: Queuing result
+    ✅ 🎯 [SignalSender::ExecuteCallback] Phase 4I: Executing in main thread
+
+Python 回調
+    ✅ [FACTOR] Calling strategy on_factor
+    ✅ [FACTOR] ✅ on_factor completed
+    ✅ 🎊🎊🎊 [on_factor] Factor data received! 🎊🎊🎊
+    ✅ Values: [1.0, 0.800000011920929] (pred_signal, pred_confidence)
+```
+
+### C.4 測試結論
+
+| 測試項目 | 結果 |
+|----------|------|
+| 服務穩定性 (restart=0) | ✅ PASS |
+| 無 "pure virtual method called" | ✅ PASS |
+| 無 "bus error" | ✅ PASS |
+| Callback Queue 初始化 | ✅ PASS |
+| 背景線程推送到 Queue | ✅ PASS |
+| 主線程 Poll 並執行 | ✅ PASS |
+| Python on_factor 回調 | ✅ PASS |
+
+**最終結論**: Phase 4I Callback Queue 修復**完全成功**！
+
+---
+
