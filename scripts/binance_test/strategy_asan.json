@@ -1,0 +1,13 @@
+{
+  "apps": [
+    {
+      "name": "strategy_asan_test",
+      "cwd": "/app/scripts/binance_test",
+      "script": "run_strategy_asan.sh",
+      "exec_interpreter": "bash",
+      "watch": false,
+      "autorestart": false,
+      "max_restarts": 0
+    }
+  ]
+}
