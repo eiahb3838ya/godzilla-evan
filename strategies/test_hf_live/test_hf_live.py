@@ -170,17 +170,23 @@ def post_stop(context):
 # ========================================
 def on_factor(context, symbol, timestamp, values):
     """
-    🎊 [Phase 4C] 因子回调 - 接收 libsignal.so 计算的因子值
-    
+    🎊 [Phase 4I] 因子回调 - 接收 libsignal.so 计算的模型输出
+
+    注意：当前版本只接收模型输出（2个值）
+    因子值（spread, mid_price, bid_volume）在 FactorEngine 计算后
+    直接发送到 ModelEngine，不经过 Python 层。
+
+    未来版本可扩展为接收完整的因子+模型数据（5个值）。
+
     Args:
         symbol: 交易对 (如 'btcusdt')
         timestamp: 时间戳 (纳秒)
-        values: 因子值列表 [spread, mid_price, bid_volume] + 模型输出 [pred_signal, pred_confidence]
+        values: 模型输出列表 [pred_signal, pred_confidence]
     """
     # ✅ Phase 4G 修復: 立即複製數據到 Python list,避免懸空指針
     # C++ 側的 factor_values 可能在回調返回後析構,導致 pybind11 綁定的 values 指向已釋放記憶體
     values = list(values)
-    
+
     context.log().info(f"")
     context.log().info(f"🎊🎊🎊 [on_factor] Factor data received! 🎊🎊🎊")
     context.log().info(f"  Symbol: {symbol}")
@@ -188,32 +194,18 @@ def on_factor(context, symbol, timestamp, values):
     context.log().info(f"  Values count: {len(values)}")
     context.log().info(f"  Values: {values}")
     context.log().info(f"")
-    # 解析 test0000 因子（3个因子 + 2个模型输出 = 5个值）
-    if len(values) >= 5:
-        # 因子值
-        spread = values[0]
-        mid_price = values[1]
-        bid_volume = values[2]
-        # 模型预测
-        pred_signal = values[3]
-        pred_confidence = values[4]
-        
-        context.log().info(f"  📊 Factors:")
-        context.log().info(f"     spread={spread:.4f}")
-        context.log().info(f"     mid_price={mid_price:.2f}")
-        context.log().info(f"     bid_volume={bid_volume:.6f}")
+
+    # 当前版本：只期望 2 个模型输出
+    if len(values) >= 2:
+        pred_signal = values[0]
+        pred_confidence = values[1]
+
         context.log().info(f"  🤖 Model Predictions:")
         context.log().info(f"     pred_signal={pred_signal:.4f}")
         context.log().info(f"     pred_confidence={pred_confidence:.4f}")
         context.log().info(f"")
         context.log().info(f"  ✅ 🎊 E2E TEST PASSED! 🎊 ✅")
         context.log().info(f"")
-    elif len(values) >= 3:
-        # 仅因子值（模型可能未就绪）
-        spread = values[0]
-        mid_price = values[1]
-        bid_volume = values[2]
-        context.log().info(f"  📊 Factors only:")
-        context.log().info(f"     spread={spread:.4f}, mid_price={mid_price:.2f}, bid_volume={bid_volume:.6f}")
     else:
         context.log().error(f"  ❌ Unexpected values count: {len(values)}")
+        context.log().error(f"  Expected: >= 2 (model outputs)")

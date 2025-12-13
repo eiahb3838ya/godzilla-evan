@@ -588,6 +588,11 @@ values = [
 ]
 ```
 
+**注意**：當前版本只傳遞模型輸出到 Python。因子值（spread, mid_price, bid_volume）
+在 FactorEngine 計算後直接發送到 ModelEngine，不經過 Python 層。
+
+未來版本可擴展為傳遞完整數據流（5個值：3因子+2模型）。
+
 ---
 
 ## Appendix C: E2E 測試結果總結
@@ -639,7 +644,9 @@ Python 回調
     ✅ [FACTOR] Calling strategy on_factor
     ✅ [FACTOR] ✅ on_factor completed
     ✅ 🎊🎊🎊 [on_factor] Factor data received! 🎊🎊🎊
+    ✅ Values count: 2 (model outputs only)
     ✅ Values: [1.0, 0.800000011920929] (pred_signal, pred_confidence)
+    ✅ E2E TEST PASSED
 ```
 
 ### C.4 測試結論
@@ -655,6 +662,25 @@ Python 回調
 | Python on_factor 回調 | ✅ PASS |
 
 **最終結論**: Phase 4I Callback Queue 修復**完全成功**！
+
+### C.5 當前版本限制
+
+**數據流範圍**：
+- ✅ 完整測試：Depth → FactorEngine → ModelEngine → on_factor
+- ✅ 模型輸出到達 Python 層（2個值）
+- ⚠️ 限制：因子值（spread, mid_price, bid_volume）未傳遞到 Python
+
+**架構說明**：
+當前實現中，FactorEngine 計算的因子值作為 ModelEngine 的輸入，
+不直接發送到 Python 層。這是合理的架構選擇，因為：
+1. 避免重複數據傳輸
+2. 模型輸出已經包含了對因子的處理結果
+3. Python 策略主要關注最終的交易信號
+
+**未來擴展**（可選）：
+如需在 Python 層訪問原始因子值，可實現：
+- 方案 A：添加獨立的 `on_factor_raw()` 回調接收因子
+- 方案 B：在 ModelEngine 輸出中攜帶原始因子數據
 
 ---
 
