@@ -178,27 +178,58 @@ def on_factor(context, symbol, timestamp, values):
 
     未来版本可扩展为接收完整的因子+模型数据（5个值）。
 
+    当 HF_TIMING_METADATA=ON 编译时，values 前 8 列为延迟元数据:
+    [0] marker = -999.0 (识别标记)
+    [1] tick_wait_us (行情等待延迟)
+    [2] factor_calc_us (因子计算耗时)
+    [3] factor_elapsed_us (从行情到计算完成)
+    [4] scan_elapsed_us (扫描延迟)
+    [5] total_elapsed_us (总端到端延迟)
+    [6] factor_count (因子数量)
+    [7] reserved (保留)
+
     Args:
         symbol: 交易对 (如 'btcusdt')
         timestamp: 时间戳 (纳秒)
-        values: 模型输出列表 [pred_signal, pred_confidence]
+        values: 模型输出列表 [pred_signal, pred_confidence] 或带元数据
     """
     # ✅ Phase 4G 修復: 立即複製數據到 Python list,避免懸空指針
     # C++ 側的 factor_values 可能在回調返回後析構,導致 pybind11 綁定的 values 指向已釋放記憶體
     values = list(values)
 
+    # 检测延迟元数据 (HF_TIMING_METADATA=ON 时注入)
+    latency_info = None
+    actual_values = values
+    if len(values) > 8 and values[0] == -999.0:
+        # 解析元数据
+        latency_info = {
+            'tick_wait_us': values[1],
+            'factor_calc_us': values[2],
+            'factor_elapsed_us': values[3],
+            'scan_elapsed_us': values[4],
+            'total_elapsed_us': values[5],
+            'factor_count': int(values[6]),
+        }
+        # 去除元数据头，获取实际值
+        actual_values = values[8:]
+
+        context.log().info(f"")
+        context.log().info(f"📊 [Latency] tick_wait={latency_info['tick_wait_us']:.1f}μs "
+                          f"calc={latency_info['factor_calc_us']:.1f}μs "
+                          f"total={latency_info['total_elapsed_us']:.1f}μs")
+
     context.log().info(f"")
     context.log().info(f"🎊🎊🎊 [on_factor] Factor data received! 🎊🎊🎊")
     context.log().info(f"  Symbol: {symbol}")
     context.log().info(f"  Timestamp: {timestamp}")
-    context.log().info(f"  Values count: {len(values)}")
-    context.log().info(f"  Values: {values}")
+    context.log().info(f"  Values count: {len(actual_values)} (raw: {len(values)})")
+    context.log().info(f"  Values: {actual_values[:5]}..." if len(actual_values) > 5 else f"  Values: {actual_values}")
     context.log().info(f"")
 
     # 当前版本：只期望 2 个模型输出
-    if len(values) >= 2:
-        pred_signal = values[0]
-        pred_confidence = values[1]
+    if len(actual_values) >= 2:
+        pred_signal = actual_values[0]
+        pred_confidence = actual_values[1]
 
         context.log().info(f"  🤖 Model Predictions:")
         context.log().info(f"     pred_signal={pred_signal:.4f}")
@@ -207,5 +238,5 @@ def on_factor(context, symbol, timestamp, values):
         context.log().info(f"  ✅ 🎊 E2E TEST PASSED! 🎊 ✅")
         context.log().info(f"")
     else:
-        context.log().error(f"  ❌ Unexpected values count: {len(values)}")
+        context.log().error(f"  ❌ Unexpected values count: {len(actual_values)}")
         context.log().error(f"  Expected: >= 2 (model outputs)")
