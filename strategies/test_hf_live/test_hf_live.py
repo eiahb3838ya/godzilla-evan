@@ -1,7 +1,22 @@
 """
 test_hf_live - 端到端測試策略（漸進式驗證）
-Phase 4B: 基礎訂單流測試（無 hf-live）
-測試 Binance → Python 數據流 + 訂單發射驗證
+Phase 6: 全市場數據 + 線性模型測試
+測試 Binance → hf-live (15因子) → 線性模型 → on_factor
+
+數據流:
+  Binance WebSocket
+    ├─ Depth (type=101) → FactorEngine → 5 Depth factors
+    ├─ Trade (type=103) → FactorEngine → 5 Trade factors
+    ├─ Ticker (type=102) → FactorEngine → 3 Ticker factors
+    └─ IndexPrice (type=104) → FactorEngine → 2 IndexPrice factors
+                                    ↓
+                            15 market factors
+                                    ↓
+                            LinearModel
+                                    ↓
+                    [pred_signal, pred_confidence]
+                                    ↓
+                            on_factor (Python)
 """
 from kungfu.wingchun.constants import *
 from pywingchun.constants import InstrumentType, OrderType, Side, OrderStatus
@@ -10,14 +25,23 @@ from decimal import Decimal, ROUND_DOWN
 
 def pre_start(context):
     """策略初始化"""
-    context.log().info("🏁 [Phase 4E] Pre-Start - Testing hf-live Data Flow")
+    context.log().info("🏁 [Phase 6] Pre-Start - Testing Full Market Data + Linear Model")
 
-    # 訂閱市場數據 - 只測試數據流，不添加交易帳號
+    # 訂閱市場數據 - Depth, Trade, Ticker, IndexPrice
     config = context.get_config()
-    context.subscribe(config["md_source"], [config["symbol"]], InstrumentType.FFuture, Exchange.BINANCE)
-    context.log().info(f"📡 Subscribed: {config['symbol']} (Futures) - Market Data Only")
+    symbol = config["symbol"]
+    md_source = config["md_source"]
 
-    context.log().info("✅ [Init] hf-live data flow test initialized")
+    # 訂閱所有公開市場數據
+    # 注意：hf-live 會自動接收並處理這些數據，計算 15 個市場因子
+    context.subscribe(md_source, [symbol], InstrumentType.FFuture, Exchange.BINANCE)
+    context.log().info(f"📡 Subscribed: {symbol} (Futures) - All Market Data")
+    context.log().info(f"   ├─ Depth: Order book snapshots → 5 factors")
+    context.log().info(f"   ├─ Trade: Market trades → 5 factors")
+    context.log().info(f"   ├─ Ticker: 24h statistics → 3 factors")
+    context.log().info(f"   └─ IndexPrice: Futures index → 2 factors")
+
+    context.log().info("✅ [Init] hf-live full market data test initialized")
 
 def on_depth(context, depth):
     """接收盤口數據 + 發送測試訂單"""
@@ -162,21 +186,27 @@ def on_order(context, order):
 
 def post_stop(context):
     """策略停止"""
-    context.log().info("🏁 [Phase 4B] Stopped")
+    context.log().info("🏁 [Phase 6] Stopped")
 
 # ========================================
-# Phase 4F: on_factor 回調（暫時註釋）
-# 等待 Phase 4C-4E 完成後再啟用
+# Phase 6: on_factor 回調 - 接收線性模型輸出
 # ========================================
 def on_factor(context, symbol, timestamp, values):
     """
-    🎊 [Phase 4I] 因子回调 - 接收 libsignal.so 计算的模型输出
+    🎊 [Phase 6] 因子回调 - 接收 LinearModel 计算的预测信号
 
-    注意：当前版本只接收模型输出（2个值）
-    因子值（spread, mid_price, bid_volume）在 FactorEngine 计算后
-    直接发送到 ModelEngine，不经过 Python 层。
+    数据流:
+    Binance → hf-live → 15 market factors → LinearModel → on_factor
 
-    未来版本可扩展为接收完整的因子+模型数据（5个值）。
+    Market Factors (15):
+    - Depth: spread, mid_price, bid_ask_ratio, depth_imbalance, weighted_mid
+    - Trade: trade_volume_ma, trade_direction, trade_intensity, vwap, trade_volatility
+    - Ticker: ticker_spread, ticker_volume_ratio, ticker_momentum
+    - IndexPrice: basis, basis_pct
+
+    LinearModel Outputs (2):
+    - pred_signal: 加权因子信号 (-∞, +∞)，正值看涨，负值看跌
+    - pred_confidence: 信号置信度 [0.5, 1.0]，基于信号强度的 sigmoid
 
     当 HF_TIMING_METADATA=ON 编译时，values 前 8 列为延迟元数据:
     [0] marker = -999.0 (识别标记)
@@ -185,16 +215,15 @@ def on_factor(context, symbol, timestamp, values):
     [3] factor_elapsed_us (从行情到计算完成)
     [4] scan_elapsed_us (扫描延迟)
     [5] total_elapsed_us (总端到端延迟)
-    [6] factor_count (因子数量)
+    [6] output_count (输出数量)
     [7] reserved (保留)
 
     Args:
-        symbol: 交易对 (如 'btcusdt')
+        symbol: 交易对 (如 'BTCUSDT')
         timestamp: 时间戳 (纳秒)
         values: 模型输出列表 [pred_signal, pred_confidence] 或带元数据
     """
     # ✅ Phase 4G 修復: 立即複製數據到 Python list,避免懸空指針
-    # C++ 側的 factor_values 可能在回調返回後析構,導致 pybind11 綁定的 values 指向已釋放記憶體
     values = list(values)
 
     # 检测延迟元数据 (HF_TIMING_METADATA=ON 时注入)
@@ -208,35 +237,39 @@ def on_factor(context, symbol, timestamp, values):
             'factor_elapsed_us': values[3],
             'scan_elapsed_us': values[4],
             'total_elapsed_us': values[5],
-            'factor_count': int(values[6]),
+            'output_count': int(values[6]),
         }
         # 去除元数据头，获取实际值
         actual_values = values[8:]
 
         context.log().info(f"")
-        context.log().info(f"📊 [Latency] tick_wait={latency_info['tick_wait_us']:.1f}μs "
-                          f"calc={latency_info['factor_calc_us']:.1f}μs "
-                          f"total={latency_info['total_elapsed_us']:.1f}μs")
+        context.log().info(f"📊 [Latency] tick_wait={latency_info['tick_wait_us']:.1f}us "
+                          f"calc={latency_info['factor_calc_us']:.1f}us "
+                          f"total={latency_info['total_elapsed_us']:.1f}us")
 
-    context.log().info(f"")
-    context.log().info(f"🎊🎊🎊 [on_factor] Factor data received! 🎊🎊🎊")
-    context.log().info(f"  Symbol: {symbol}")
-    context.log().info(f"  Timestamp: {timestamp}")
-    context.log().info(f"  Values count: {len(actual_values)} (raw: {len(values)})")
-    context.log().info(f"  Values: {actual_values[:5]}..." if len(actual_values) > 5 else f"  Values: {actual_values}")
-    context.log().info(f"")
-
-    # 当前版本：只期望 2 个模型输出
+    # 当前版本：期望 2 个线性模型输出
     if len(actual_values) >= 2:
         pred_signal = actual_values[0]
         pred_confidence = actual_values[1]
 
-        context.log().info(f"  🤖 Model Predictions:")
-        context.log().info(f"     pred_signal={pred_signal:.4f}")
-        context.log().info(f"     pred_confidence={pred_confidence:.4f}")
+        # 生成交易信号解读
+        if pred_signal > 0.1:
+            signal_emoji = "📈"
+            signal_text = "BULLISH"
+        elif pred_signal < -0.1:
+            signal_emoji = "📉"
+            signal_text = "BEARISH"
+        else:
+            signal_emoji = "➡️"
+            signal_text = "NEUTRAL"
+
+        # 格式化输出
         context.log().info(f"")
-        context.log().info(f"  ✅ 🎊 E2E TEST PASSED! 🎊 ✅")
+        context.log().info(f"🤖 [LinearModel] {symbol} @ {timestamp}")
+        context.log().info(f"   {signal_emoji} Signal: {pred_signal:+.4f} ({signal_text})")
+        context.log().info(f"   🎯 Confidence: {pred_confidence:.2%}")
         context.log().info(f"")
     else:
-        context.log().error(f"  ❌ Unexpected values count: {len(actual_values)}")
-        context.log().error(f"  Expected: >= 2 (model outputs)")
+        context.log().warning(f"⚠️  Unexpected values count: {len(actual_values)} (expected >= 2)")
+        context.log().warning(f"   Raw values: {actual_values}")
+

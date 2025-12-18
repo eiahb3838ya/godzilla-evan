@@ -281,6 +281,12 @@ namespace kungfu
                             strategy.second->on_ticker(context_, event->data<Ticker>());
                         }
                     }
+
+                    // Phase 6: 轉發到 signal library (type=102 for Ticker)
+                    if (signal_on_data_ && signal_engine_handle_)
+                    {
+                        signal_on_data_(signal_engine_handle_, 102, &(event->data<Ticker>()));
+                    }
                 });
 
                 events_ | is(msg::type::Trade) |
@@ -310,6 +316,12 @@ namespace kungfu
                         if (context_->is_subscribed("index_price", strategy.first, event->data<IndexPrice>())) {
                             strategy.second->on_index_price(context_, event->data<IndexPrice>());
                         }
+                    }
+
+                    // Phase 6: 轉發到 signal library (type=104 for IndexPrice)
+                    if (signal_on_data_ && signal_engine_handle_)
+                    {
+                        signal_on_data_(signal_engine_handle_, 104, &(event->data<IndexPrice>()));
                     }
                 });
 
