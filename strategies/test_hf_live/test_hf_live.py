@@ -29,6 +29,10 @@ def pre_start(context):
 
     # 訂閱市場數據 - Depth, Trade, Ticker, IndexPrice
     config = context.get_config()
+
+    # 註冊交易帳號（必須在下單前完成）
+    context.add_account(config["td_source"], config["account"])
+
     symbol = config["symbol"]
     md_source = config["md_source"]
 
