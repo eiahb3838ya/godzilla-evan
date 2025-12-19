@@ -215,7 +215,7 @@ public:
 
     void on_factor(strategy::Context_ptr context, const std::string &symbol, long long timestamp, const std::vector<double> &values) override
     {
-        py::gil_scoped_acquire acquire;
+        py::gil_scoped_acquire acquire;  // 必須：從 C++ 回調線程調用 Python 需要 GIL
         PYBIND11_OVERLOAD(void, strategy::Strategy, on_factor, context, symbol, timestamp, values);
     }
 
