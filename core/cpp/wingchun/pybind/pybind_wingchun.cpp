@@ -215,7 +215,8 @@ public:
 
     void on_factor(strategy::Context_ptr context, const std::string &symbol, long long timestamp, const std::vector<double> &values) override
     {
-        py::gil_scoped_acquire acquire;  // 必須：從 C++ 回調線程調用 Python 需要 GIL
+        // Phase 4I 確保此回調在主線程執行，主線程已持有 GIL，無需再次獲取
+        // 見 plan/plan/debug_hf-live.05-on_factor_callback_failure.md
         PYBIND11_OVERLOAD(void, strategy::Strategy, on_factor, context, symbol, timestamp, values);
     }
 
