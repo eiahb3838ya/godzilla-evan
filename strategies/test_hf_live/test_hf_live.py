@@ -36,14 +36,23 @@ def pre_start(context):
     symbol = config["symbol"]
     md_source = config["md_source"]
 
-    # 訂閱所有公開市場數據
-    # 注意：hf-live 會自動接收並處理這些數據，計算 15 個市場因子
+    # ✅ Phase 6 Fix: 使用獨立的訂閱方法訂閱多種數據類型
+    # 注意：IndexPrice 不支持（marketdata_binance.cpp:340 故意返回 false）
+
+    # 訂閱 1: Depth (默認，必須，10檔買賣盤)
     context.subscribe(md_source, [symbol], InstrumentType.FFuture, Exchange.BINANCE)
-    context.log().info(f"📡 Subscribed: {symbol} (Futures) - All Market Data")
-    context.log().info(f"   ├─ Depth: Order book snapshots → 5 factors")
-    context.log().info(f"   ├─ Trade: Market trades → 5 factors")
-    context.log().info(f"   ├─ Ticker: 24h statistics → 3 factors")
-    context.log().info(f"   └─ IndexPrice: Futures index → 2 factors")
+
+    # 訂閱 2: Trade (公開成交數據)
+    context.subscribe_trade(md_source, [symbol], InstrumentType.FFuture, Exchange.BINANCE)
+
+    # 訂閱 3: Ticker (24小時統計數據)
+    context.subscribe_ticker(md_source, [symbol], InstrumentType.FFuture, Exchange.BINANCE)
+
+    context.log().info(f"📡 Subscribed: {symbol} (Futures) - Market Data")
+    context.log().info(f"   ├─ Depth: Order book snapshots → 5 factors ✅")
+    context.log().info(f"   ├─ Trade: Market trades → 5 factors ✅")
+    context.log().info(f"   └─ Ticker: 24h statistics → 3 factors ✅")
+    context.log().info(f"   ⚠️  IndexPrice: Not supported by MD Gateway")
 
     context.log().info("✅ [Init] hf-live full market data test initialized")
 
@@ -107,8 +116,8 @@ def on_depth(context, depth):
         #   - tick size = 0.1（價格精度）
         #   - notional >= 100 USDT（名義價值最小值）
         raw_price = ask * 0.98  # 當前賣價的 98%（2% 折扣）
-        # 使用 Decimal 確保價格精確到 0.1，完全避免浮點數表示問題
-        test_price = float(Decimal(str(raw_price)).quantize(Decimal('0.1'), rounding=ROUND_DOWN))
+        # 使用整數運算確保價格精確到 0.1，完全避免浮點數精度問題
+        test_price = int(raw_price * 10) / 10.0  # 先乘以 10，取整，再除以 10
         test_volume = 0.002  # 增加到 0.002 BTC，確保 notional >= 100 USDT
         
         notional = test_price * test_volume
@@ -276,4 +285,48 @@ def on_factor(context, symbol, timestamp, values):
     else:
         context.log().warning(f"⚠️  Unexpected values count: {len(actual_values)} (expected >= 2)")
         context.log().warning(f"   Raw values: {actual_values}")
+
+# ========================================
+# Phase 6: 驗證回調 - 繞過 hf-live 直接接收數據
+# ========================================
+def on_trade(context, trade):
+    """
+    🔥 [驗證回調] 直接接收 Trade 事件（不經 hf-live）
+
+    用於驗證 Binance Testnet 是否真的發送 Trade 數據。
+    如果這個函數有輸出 → Testnet 有 Trade 數據
+    如果無輸出 → Testnet 沒有 Trade 數據
+
+    Args:
+        trade: Trade 物件
+            - symbol: 交易對
+            - price: 成交價格
+            - volume: 成交量
+            - side: 買賣方向
+    """
+    context.log().info(f"🔥 [TRADE] {trade.symbol} "
+                      f"price={trade.price:.2f} volume={trade.volume:.4f} "
+                      f"side={'BUY' if trade.side == Side.Buy else 'SELL'}")
+
+def on_ticker(context, ticker):
+    """
+    📊 [驗證回調] 直接接收 Ticker 事件（不經 hf-live）
+
+    用於驗證 Binance Testnet 是否真的發送 Ticker 數據。
+    如果這個函數有輸出 → Testnet 有 Ticker 數據
+    如果無輸出 → Testnet 沒有 Ticker 數據
+
+    Args:
+        ticker: Ticker 物件
+            - symbol: 交易對
+            - last_price: 最新成交價（可能不存在）
+            - bid_price: 最佳買價
+            - ask_price: 最佳賣價
+            - volume: 24h 成交量（可能不存在）
+    """
+    # 使用 Ticker 實際存在的屬性
+    context.log().info(f"📊 [TICKER] {ticker.symbol} "
+                      f"bid={ticker.bid_price:.2f} "
+                      f"ask={ticker.ask_price:.2f}")
+
 
