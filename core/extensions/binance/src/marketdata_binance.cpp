@@ -55,7 +55,30 @@ namespace kungfu {
                     );
             }
 
-            MarketDataBinance::~MarketDataBinance() {}
+            MarketDataBinance::~MarketDataBinance() {
+                SPDLOG_INFO("MarketDataBinance destructor: stopping ASIO event loop");
+
+                // 1. Stop ASIO event loop - this causes ioctx_.run() to return
+                ioctx_.stop();
+
+                // 2. Wait for task thread to terminate completely
+                if (task_thread_ && task_thread_->joinable()) {
+                    SPDLOG_INFO("MarketDataBinance destructor: joining task thread");
+                    task_thread_->join();
+                }
+
+                // 3. Explicitly reset WebSocket connections
+                // (shared_ptr will auto-destroy, but explicit reset ensures correct order)
+                ws_ptr_.reset();
+                fws_ptr_.reset();
+                dws_ptr_.reset();
+
+                // 4. Reset REST API clients
+                rest_ptr_.reset();
+                frest_ptr_.reset();
+
+                SPDLOG_INFO("MarketDataBinance destructor: cleanup complete");
+            }
 
             std::string MarketDataBinance::get_runtime_folder() const {
                 auto home = get_io_device()->get_home();
