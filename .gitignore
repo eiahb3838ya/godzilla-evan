@@ -8,7 +8,6 @@ dist/
 # C/C++/CMake build outputs
 build/
 ref/
-plan/
 .pytest_cache
 core/**/build/
 CMakeFiles/
@@ -43,6 +42,11 @@ core/python/extensions/binance/
 .DS_Store
 .vscode/
 *.swp
+
+# Development/Tooling directories (local only)
+.github/
+.serena/
+plan/
 
 # ===== hf-live Submodule 配置 =====
 # 策略: 僅跟蹤 hf-live/.git 和 commit hash,不上傳源碼
