@@ -2,7 +2,8 @@
   "md_source": "binance",
   "td_source": "binance",
   "account": "gz_user1",
-  "symbol": "btcusdt",
+  "symbol": "btc_usdt",
   "instrument_type": "FFuture",
-  "signal_library_path": "/app/hf-live/build/libsignal.so"
+  "signal_library_path": "/app/hf-live/build/libsignal.so",
+  "assets": ["BTCUSDT"]
 }

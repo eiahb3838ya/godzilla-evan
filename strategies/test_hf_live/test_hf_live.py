@@ -1,7 +1,22 @@
 """
 test_hf_live - 端到端測試策略（漸進式驗證）
-Phase 4B: 基礎訂單流測試（無 hf-live）
-測試 Binance → Python 數據流 + 訂單發射驗證
+Phase 6: 全市場數據 + 線性模型 (生產就緒)
+測試 Binance → hf-live (15因子) → 線性模型 → on_factor
+
+數據流:
+  Binance WebSocket
+    ├─ Depth (type=101) → FactorEngine → 5 Depth factors
+    ├─ Trade (type=103) → FactorEngine → 5 Trade factors
+    ├─ Ticker (type=102) → FactorEngine → 3 Ticker factors
+    └─ IndexPrice (type=104) → FactorEngine → 2 IndexPrice factors
+                                    ↓
+                            15 market factors
+                                    ↓
+                            LinearModel
+                                    ↓
+                    [pred_signal, pred_confidence]
+                                    ↓
+                            on_factor (Python)
 """
 from kungfu.wingchun.constants import *
 from pywingchun.constants import InstrumentType, OrderType, Side, OrderStatus
@@ -10,104 +25,60 @@ from decimal import Decimal, ROUND_DOWN
 
 def pre_start(context):
     """策略初始化"""
-    context.log().info("🏁 [Phase 4E] Pre-Start - Testing hf-live Data Flow")
+    import time
 
-    # 訂閱市場數據 - 只測試數據流，不添加交易帳號
     config = context.get_config()
-    context.subscribe(config["md_source"], [config["symbol"]], InstrumentType.FFuture, Exchange.BINANCE)
-    context.log().info(f"📡 Subscribed: {config['symbol']} (Futures) - Market Data Only")
+    symbol = config["symbol"]
+    md_source = config["md_source"]
 
-    context.log().info("✅ [Init] hf-live data flow test initialized")
+    context.log().info("Initializing strategy with multi-subscription retry mechanism")
+
+    # 註冊交易帳號（必須在下單前完成）
+    context.add_account(config["td_source"], config["account"])
+
+    # Helper function: subscribe with retry
+    def subscribe_with_retry(subscribe_func, data_type, max_retries=30):
+        for retry in range(max_retries):
+            try:
+                subscribe_func(md_source, [symbol], InstrumentType.FFuture, Exchange.BINANCE)
+                if retry > 0:
+                    context.log().info(f"✅ [{data_type}] Subscribed after {retry} retries")
+                return True
+            except RuntimeError as e:
+                if "invalid md" in str(e):
+                    if retry == 0:
+                        context.log().warning(f"⏳ MD Gateway not ready, waiting...")
+                    time.sleep(1)
+                else:
+                    raise
+        context.log().error(f"❌ [{data_type}] Failed after {max_retries} retries")
+        return False
+
+    # 訂閱 1: Depth (order book)
+    if not subscribe_with_retry(context.subscribe, "DEPTH"):
+        raise RuntimeError(f"Failed to subscribe Depth: MD Gateway '{md_source}' not available")
+
+    # 訂閱 2: Trade (market trades)
+    if not subscribe_with_retry(context.subscribe_trade, "TRADE"):
+        raise RuntimeError(f"Failed to subscribe Trade: MD Gateway '{md_source}' not available")
+
+    # 訂閱 3: Ticker (24h statistics)
+    if not subscribe_with_retry(context.subscribe_ticker, "TICKER"):
+        raise RuntimeError(f"Failed to subscribe Ticker: MD Gateway '{md_source}' not available")
+
+    context.log().info("✅ All market data subscriptions completed (Depth + Trade + Ticker)")
 
 def on_depth(context, depth):
-    """接收盤口數據 + 發送測試訂單"""
-    config = context.get_config()
-    
-    # ✅ 防御性检查：验证深度数据有效性
-    if not depth.bid_price or len(depth.bid_price) == 0:
-        context.log().warning("⚠️  Depth data incomplete: no bid prices")
+    """緩存最新價格供 on_factor 使用，不做任何交易邏輯"""
+    # 防御性检查
+    if not depth.bid_price or not depth.ask_price:
         return
-    
-    if not depth.ask_price or len(depth.ask_price) == 0:
-        context.log().warning("⚠️  Depth data incomplete: no ask prices")
+    if len(depth.bid_price) == 0 or len(depth.ask_price) == 0:
         return
-    
-    bid = depth.bid_price[0]
-    ask = depth.ask_price[0]
-    spread = ask - bid
-    
-    # 打印盤口
-    context.log().info(f"📊 [on_depth] {depth.symbol} bid={bid:.2f} ask={ask:.2f} spread={spread:.2f}")
-    
-    # 檢查是否需要取消訂單（30秒後）
-    submit_time = context.get_object("submit_time")
-    confirmed_ex_order_id = context.get_object("confirmed_ex_order_id")
-    cancelled = context.get_object("cancelled")
-    
-    if submit_time and confirmed_ex_order_id and not cancelled:
-        elapsed = (context.now() - submit_time) / 1_000_000_000  # 轉換為秒
-        if elapsed >= 30:
-            ex_order_id = confirmed_ex_order_id
-            order_id = context.get_object("order_id")
-            
-            context.log().info(f"")
-            context.log().info(f"⏰ 30 秒已到，開始取消訂單...")
-            context.log().info(f"🗑️  [Cancelling Order] order_id={order_id} ex_order_id='{ex_order_id}'")
-            
-            try:
-                context.cancel_order(
-                    config["account"], 
-                    order_id, 
-                    config["symbol"], 
-                    ex_order_id, 
-                    InstrumentType.FFuture
-                )
-                context.set_object("cancelled", True)
-            except Exception as e:
-                context.log().error(f"❌ [Cancel Failed] {str(e)}")
-    
-    # 安全地檢查標誌（處理 None 情況）
-    order_placed = context.get_object("order_placed")
-    if order_placed is None:
-        order_placed = False
-        context.set_object("order_placed", False)
-    
-    # 只發送一次測試訂單
-    if not order_placed:
-        # 使用合理的價格（略低於市價，不太可能成交但不會被拒絕）
-        # Binance Futures BTCUSDT 限制：
-        #   - tick size = 0.1（價格精度）
-        #   - notional >= 100 USDT（名義價值最小值）
-        raw_price = ask * 0.98  # 當前賣價的 98%（2% 折扣）
-        # 使用 Decimal 確保價格精確到 0.1，完全避免浮點數表示問題
-        test_price = float(Decimal(str(raw_price)).quantize(Decimal('0.1'), rounding=ROUND_DOWN))
-        test_volume = 0.002  # 增加到 0.002 BTC，確保 notional >= 100 USDT
-        
-        notional = test_price * test_volume
-        context.log().info(f"💸 [Placing Order] Buy {test_volume} BTC @ {test_price:.1f} (notional={notional:.2f} USDT)")
-        
-        try:
-            order_id = context.insert_order(
-                config["symbol"], 
-                InstrumentType.FFuture, 
-                Exchange.BINANCE, 
-                config["account"],
-                test_price, 
-                test_volume, 
-                OrderType.Limit, 
-                Side.Buy
-            )
-            
-            context.log().info(f"✅ [Order Placed] order_id={order_id}")
-            
-            # 立即設置標誌，避免重複下單
-            context.set_object("order_placed", True)
-            context.set_object("order_id", order_id)
-            
-        except Exception as e:
-            context.log().error(f"❌ [Order Failed] {str(e)}")
-            # 即使失敗也設置標誌，避免無限重試
-            context.set_object("order_placed", True)
+
+    # 緩存最新價格（供 on_factor 下單使用）
+    context.set_object("last_bid", depth.bid_price[0])
+    context.set_object("last_ask", depth.ask_price[0])
 
 def on_order(context, order):
     """訂單狀態回調 - 驗證發射成功"""
@@ -162,81 +133,102 @@ def on_order(context, order):
 
 def post_stop(context):
     """策略停止"""
-    context.log().info("🏁 [Phase 4B] Stopped")
+    context.log().info("🏁 [Phase 6] Stopped")
 
 # ========================================
-# Phase 4F: on_factor 回調（暫時註釋）
-# 等待 Phase 4C-4E 完成後再啟用
+# Phase 6: on_factor 回調 - 接收線性模型輸出並進行交易決策
 # ========================================
 def on_factor(context, symbol, timestamp, values):
     """
-    🎊 [Phase 4I] 因子回调 - 接收 libsignal.so 计算的模型输出
+    根據因子信號進行交易決策
 
-    注意：当前版本只接收模型输出（2个值）
-    因子值（spread, mid_price, bid_volume）在 FactorEngine 计算后
-    直接发送到 ModelEngine，不经过 Python 层。
+    數據流: Binance → hf-live → 15 factors → LinearModel → on_factor → 下單
 
-    未来版本可扩展为接收完整的因子+模型数据（5个值）。
-
-    当 HF_TIMING_METADATA=ON 编译时，values 前 8 列为延迟元数据:
-    [0] marker = -999.0 (识别标记)
-    [1] tick_wait_us (行情等待延迟)
-    [2] factor_calc_us (因子计算耗时)
-    [3] factor_elapsed_us (从行情到计算完成)
-    [4] scan_elapsed_us (扫描延迟)
-    [5] total_elapsed_us (总端到端延迟)
-    [6] factor_count (因子数量)
-    [7] reserved (保留)
-
-    Args:
-        symbol: 交易对 (如 'btcusdt')
-        timestamp: 时间戳 (纳秒)
-        values: 模型输出列表 [pred_signal, pred_confidence] 或带元数据
+    交易邏輯:
+    - BULLISH (signal > 0.1): 買入 0.002 BTC @ 98% ask
+    - 30 秒後自動取消未成交訂單
     """
-    # ✅ Phase 4G 修復: 立即複製數據到 Python list,避免懸空指針
-    # C++ 側的 factor_values 可能在回調返回後析構,導致 pybind11 綁定的 values 指向已釋放記憶體
+    config = context.get_config()
+
+    # ✅ Phase 4G 修復: 立即複製數據到 Python list, 避免懸空指針
     values = list(values)
 
-    # 检测延迟元数据 (HF_TIMING_METADATA=ON 时注入)
-    latency_info = None
+    # 解析元數據 (如果有)
     actual_values = values
     if len(values) > 8 and values[0] == -999.0:
-        # 解析元数据
-        latency_info = {
-            'tick_wait_us': values[1],
-            'factor_calc_us': values[2],
-            'factor_elapsed_us': values[3],
-            'scan_elapsed_us': values[4],
-            'total_elapsed_us': values[5],
-            'factor_count': int(values[6]),
-        }
-        # 去除元数据头，获取实际值
         actual_values = values[8:]
 
-        context.log().info(f"")
-        context.log().info(f"📊 [Latency] tick_wait={latency_info['tick_wait_us']:.1f}μs "
-                          f"calc={latency_info['factor_calc_us']:.1f}μs "
-                          f"total={latency_info['total_elapsed_us']:.1f}μs")
+    if len(actual_values) < 2:
+        context.log().warning(f"⚠️ Unexpected values count: {len(actual_values)}")
+        return
 
-    context.log().info(f"")
-    context.log().info(f"🎊🎊🎊 [on_factor] Factor data received! 🎊🎊🎊")
-    context.log().info(f"  Symbol: {symbol}")
-    context.log().info(f"  Timestamp: {timestamp}")
-    context.log().info(f"  Values count: {len(actual_values)} (raw: {len(values)})")
-    context.log().info(f"  Values: {actual_values[:5]}..." if len(actual_values) > 5 else f"  Values: {actual_values}")
-    context.log().info(f"")
+    pred_signal = actual_values[0]
+    pred_confidence = actual_values[1]
 
-    # 当前版本：只期望 2 个模型输出
-    if len(actual_values) >= 2:
-        pred_signal = actual_values[0]
-        pred_confidence = actual_values[1]
-
-        context.log().info(f"  🤖 Model Predictions:")
-        context.log().info(f"     pred_signal={pred_signal:.4f}")
-        context.log().info(f"     pred_confidence={pred_confidence:.4f}")
-        context.log().info(f"")
-        context.log().info(f"  ✅ 🎊 E2E TEST PASSED! 🎊 ✅")
-        context.log().info(f"")
+    # 信號解讀
+    if pred_signal > 0.1:
+        signal_text = "BULLISH"
+    elif pred_signal < -0.1:
+        signal_text = "BEARISH"
     else:
-        context.log().error(f"  ❌ Unexpected values count: {len(actual_values)}")
-        context.log().error(f"  Expected: >= 2 (model outputs)")
+        signal_text = "NEUTRAL"
+
+    context.log().info(f"🤖 [LinearModel] {symbol} Signal={pred_signal:+.4f} ({signal_text}) Conf={pred_confidence:.2%}")
+
+    # ========== 訂單取消邏輯 (30秒後) ==========
+    submit_time = context.get_object("submit_time")
+    confirmed_ex_order_id = context.get_object("confirmed_ex_order_id")
+    cancelled = context.get_object("cancelled")
+
+    if submit_time and confirmed_ex_order_id and not cancelled:
+        elapsed = (context.now() - submit_time) / 1_000_000_000
+        if elapsed >= 30:
+            order_id = context.get_object("order_id")
+            context.log().info(f"⏰ 30 秒已到，取消訂單 order_id={order_id}")
+            try:
+                context.cancel_order(
+                    config["account"], order_id, config["symbol"],
+                    confirmed_ex_order_id, InstrumentType.FFuture
+                )
+                context.set_object("cancelled", True)
+            except Exception as e:
+                context.log().error(f"❌ [Cancel Failed] {e}")
+
+    # ========== 下單邏輯 (基於 signal) ==========
+    order_placed = context.get_object("order_placed") or False
+
+    if not order_placed and pred_signal > 0.1:  # BULLISH 信號時下單
+        last_ask = context.get_object("last_ask")
+        if not last_ask:
+            context.log().warning("⚠️ 無價格數據，跳過下單")
+            return
+
+        # 計算價格 (98% of ask, 精確到 0.1)
+        test_price = int(last_ask * 0.98 * 10) / 10.0
+        test_volume = 0.002
+
+        context.log().info(f"💸 [Placing Order] Buy {test_volume} BTC @ {test_price:.1f}")
+
+        try:
+            order_id = context.insert_order(
+                config["symbol"], InstrumentType.FFuture, Exchange.BINANCE,
+                config["account"], test_price, test_volume,
+                OrderType.Limit, Side.Buy
+            )
+            context.log().info(f"✅ [Order Placed] order_id={order_id}")
+            context.set_object("order_placed", True)
+            context.set_object("order_id", order_id)
+            context.set_object("submit_time", context.now())
+        except Exception as e:
+            context.log().error(f"❌ [Order Failed] {e}")
+            context.set_object("order_placed", True)  # 避免無限重試
+
+def on_trade(context, trade):
+    """Trade 事件由 hf-live 處理，策略層不需要處理"""
+    pass
+
+def on_ticker(context, ticker):
+    """Ticker 事件由 hf-live 處理，策略層不需要處理"""
+    pass
+
+

@@ -80,7 +80,28 @@ namespace kungfu {
                 }
             }
 
-            TraderBinance::~TraderBinance() {}
+            TraderBinance::~TraderBinance() {
+                SPDLOG_INFO("TraderBinance destructor: stopping ASIO event loop");
+
+                // 1. Stop ASIO event loop
+                ioctx_.stop();
+
+                // 2. Wait for task thread to terminate
+                if (task_thread_ && task_thread_->joinable()) {
+                    SPDLOG_INFO("TraderBinance destructor: joining task thread");
+                    task_thread_->join();
+                }
+
+                // 3. Reset REST API clients
+                rest_ptr_.reset();
+                frest_ptr_.reset();
+
+                // 4. Reset WebSocket connections
+                ws_ptr_.reset();
+                fws_ptr_.reset();
+
+                SPDLOG_INFO("TraderBinance destructor: cleanup complete");
+            }
 
             std::string TraderBinance::get_runtime_folder() const {
                 auto home = get_io_device()->get_home();
