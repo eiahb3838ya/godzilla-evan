@@ -1,0 +1,3 @@
+[submodule "hf-live"]
+	path = hf-live
+	url = https://github.com/eiahb3838ya/hf-live.git
