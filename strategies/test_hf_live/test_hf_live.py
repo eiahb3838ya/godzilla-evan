@@ -1,6 +1,6 @@
 """
 test_hf_live - 端到端測試策略（漸進式驗證）
-Phase 6: 全市場數據 + 線性模型測試
+Phase 6: 全市場數據 + 線性模型 (生產就緒)
 測試 Binance → hf-live (15因子) → 線性模型 → on_factor
 
 數據流:
@@ -25,36 +25,48 @@ from decimal import Decimal, ROUND_DOWN
 
 def pre_start(context):
     """策略初始化"""
-    context.log().info("🏁 [Phase 6] Pre-Start - Testing Full Market Data + Linear Model")
+    import time
 
-    # 訂閱市場數據 - Depth, Trade, Ticker, IndexPrice
     config = context.get_config()
+    symbol = config["symbol"]
+    md_source = config["md_source"]
+
+    context.log().info("Initializing strategy with multi-subscription retry mechanism")
 
     # 註冊交易帳號（必須在下單前完成）
     context.add_account(config["td_source"], config["account"])
 
-    symbol = config["symbol"]
-    md_source = config["md_source"]
+    # Helper function: subscribe with retry
+    def subscribe_with_retry(subscribe_func, data_type, max_retries=30):
+        for retry in range(max_retries):
+            try:
+                subscribe_func(md_source, [symbol], InstrumentType.FFuture, Exchange.BINANCE)
+                if retry > 0:
+                    context.log().info(f"✅ [{data_type}] Subscribed after {retry} retries")
+                return True
+            except RuntimeError as e:
+                if "invalid md" in str(e):
+                    if retry == 0:
+                        context.log().warning(f"⏳ MD Gateway not ready, waiting...")
+                    time.sleep(1)
+                else:
+                    raise
+        context.log().error(f"❌ [{data_type}] Failed after {max_retries} retries")
+        return False
 
-    # ✅ Phase 6 Fix: 使用獨立的訂閱方法訂閱多種數據類型
-    # 注意：IndexPrice 不支持（marketdata_binance.cpp:340 故意返回 false）
+    # 訂閱 1: Depth (order book)
+    if not subscribe_with_retry(context.subscribe, "DEPTH"):
+        raise RuntimeError(f"Failed to subscribe Depth: MD Gateway '{md_source}' not available")
 
-    # 訂閱 1: Depth (默認，必須，10檔買賣盤)
-    context.subscribe(md_source, [symbol], InstrumentType.FFuture, Exchange.BINANCE)
+    # 訂閱 2: Trade (market trades)
+    if not subscribe_with_retry(context.subscribe_trade, "TRADE"):
+        raise RuntimeError(f"Failed to subscribe Trade: MD Gateway '{md_source}' not available")
 
-    # 訂閱 2: Trade (公開成交數據)
-    context.subscribe_trade(md_source, [symbol], InstrumentType.FFuture, Exchange.BINANCE)
+    # 訂閱 3: Ticker (24h statistics)
+    if not subscribe_with_retry(context.subscribe_ticker, "TICKER"):
+        raise RuntimeError(f"Failed to subscribe Ticker: MD Gateway '{md_source}' not available")
 
-    # 訂閱 3: Ticker (24小時統計數據)
-    context.subscribe_ticker(md_source, [symbol], InstrumentType.FFuture, Exchange.BINANCE)
-
-    context.log().info(f"📡 Subscribed: {symbol} (Futures) - Market Data")
-    context.log().info(f"   ├─ Depth: Order book snapshots → 5 factors ✅")
-    context.log().info(f"   ├─ Trade: Market trades → 5 factors ✅")
-    context.log().info(f"   └─ Ticker: 24h statistics → 3 factors ✅")
-    context.log().info(f"   ⚠️  IndexPrice: Not supported by MD Gateway")
-
-    context.log().info("✅ [Init] hf-live full market data test initialized")
+    context.log().info("✅ All market data subscriptions completed (Depth + Trade + Ticker)")
 
 def on_depth(context, depth):
     """緩存最新價格供 on_factor 使用，不做任何交易邏輯"""
